@@ -24,11 +24,19 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.text.KeyboardOptions
 //noinspection UsingMaterialAndMaterial3Libraries
 import androidx.compose.material.Icon
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.input.KeyboardType
+import android.Manifest
+import android.content.pm.PackageManager
+import android.widget.Toast
+import androidx.core.app.ActivityCompat
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 
 
 @Composable
@@ -54,77 +62,101 @@ data class Contact(
 )
 
 @Composable
-fun ContactList(
+fun SearchScreen(
     contacts: List<Contact>,
-    onAddContact: () -> Unit,
+    onContactClick: (Contact) -> Unit,
     onCallClick: (String) -> Unit,
     onWhatsAppClick: (String) -> Unit,
     onSmsClick: (String) -> Unit
-    ) {
+) {
     var searchQuery by remember { mutableStateOf("") }
-    val filteredContact = contacts.filter {contact ->
-        contact.name.contains(searchQuery, ignoreCase = true) ||
-        contact.phoneNumber.any { it.contains(searchQuery)}
 
+    val filteredContacts = contacts
+        .sortedBy { it.name }
+        .filter   { contact ->
+        contact.name.contains(searchQuery, ignoreCase = true)
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Citofono") }
-            )
-        },
-        floatingActionButton = {
-            FloatingActionButton(onClick = onAddContact) {
-                Text("+")
-            }
-        }
-    ) { innerPadding ->
-        Column (
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxWidth()
-        ) {
-            TextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it},
-                label = { Text("Buscar Departamento") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp)
-            )
-            Spacer(
-                modifier = Modifier
-                    .height(8.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        TextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            label = { Text("Buscar Departamento") },
+            keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth()
+        )
 
-            )
-        LazyColumn(
-            modifier = Modifier
-                .padding(innerPadding)
+        Spacer(modifier = Modifier.height(16.dp))
 
-        ) {
-            if (filteredContact.isNotEmpty()) {
-                items(filteredContact) { contact ->
-                    ContactItem(
-                        contact = contact,
-                        onWhatsAppClick = onWhatsAppClick,
-                        onCallClick = onCallClick,
-                        onSmsClick = onSmsClick
-                        )
+        if (searchQuery.isNotBlank()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (filteredContacts.isNotEmpty()) {
+                    items(filteredContacts) { contact ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp)
+                        ) {
+                            Text(
+                                text = "Departamento: ${contact.name}",
+                                style = MaterialTheme.typography.body1,
+                                modifier = Modifier
+                                    .padding(bottom = 8.dp)
+                            )
+
+                            contact.phoneNumber.forEachIndexed { index, phoneNumber ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "Telefono ${index + 1}",
+                                        style = MaterialTheme.typography.body2,
+                                        modifier = Modifier.weight(1f)
+                                    )
+
+                                    Row {
+                                        IconButton(onClick = { onCallClick(phoneNumber) }) {
+                                            Icon(imageVector = Icons.Default.Call, contentDescription = "Llamar")
+                                        }
+                                        IconButton(onClick = { onWhatsAppClick(phoneNumber) }) {
+                                            Icon(imageVector = Icons.Default.Person, contentDescription = "WhatsApp")
+                                        }
+                                        IconButton(onClick = { onSmsClick(phoneNumber) }) {
+                                            Icon(imageVector = Icons.Default.Email, contentDescription = "SMS")
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 } else {
-                        item {
-                            Text(
-                                text = "No se encontraron resultados",
-                                style = MaterialTheme.typography.body1,
-                                modifier = Modifier.padding(16.dp)
-                            )
-                        }
+                    item {
+                        Text(
+                            text = "No se encontraron resultados",
+                            style = MaterialTheme.typography.body1,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
                 }
             }
         }
     }
 }
+
+
+
 
 @Composable
 fun ContactItem(
@@ -138,9 +170,9 @@ fun ContactItem(
             .fillMaxWidth()
             .padding(8.dp)
     ) {
-        Text(text = contact.name, style = MaterialTheme.typography.body1)
+        Text(text = "Departamento: ${contact.name}", style = MaterialTheme.typography.body1)
 
-        contact.phoneNumber.forEachIndexed { index, phoneNumber ->
+        contact.phoneNumber.forEach { phoneNumber ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -148,7 +180,7 @@ fun ContactItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Teléfono ${index + 1}",
+                    text = "+56 $phoneNumber",
                     style = MaterialTheme.typography.body2,
                     modifier = Modifier.weight(1f)
                 )
@@ -161,13 +193,14 @@ fun ContactItem(
                         Icon(imageVector = Icons.Default.Person, contentDescription = "WhatsApp")
                     }
                     IconButton(onClick = { onSmsClick(phoneNumber) }) {
-                        Icon(imageVector = Icons.Default.Email, contentDescription = "Sms")
+                        Icon(imageVector = Icons.Default.Email, contentDescription = "SMS")
                     }
                 }
             }
         }
     }
 }
+
 
 
 
@@ -191,13 +224,12 @@ fun AddContactForm(onAddContact: (Contact) -> Unit) {
         Button(onClick = {
             if (currentPhoneNumber.isNotBlank()) {
                 phoneNumbers = phoneNumbers + currentPhoneNumber
-                currentPhoneNumber = "" // Limpia el campo
+                currentPhoneNumber = ""
             }
         }) {
             Text("Add Phone Number")
         }
 
-        // Muestra la lista de números agregados
         phoneNumbers.forEach { number ->
             Text(text = "+56 $number", style = MaterialTheme.typography.body2)
         }
@@ -240,37 +272,62 @@ fun loadContactsFromCsv(context: Context): List<Contact> {
 
 class MainActivity : ComponentActivity() {
     private val contacts = mutableStateListOf<Contact>()
+    private lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
+    private var pendingPhoneNumber: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        requestPermissionLauncher = registerForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) { isGranted: Boolean ->
+            if (isGranted) {
+                pendingPhoneNumber?.let { makeCall(it) }
+                pendingPhoneNumber = null
+            } else {
+                Toast.makeText(this, "Permiso denegado para realizar llamadas", Toast.LENGTH_SHORT).show()
+            }
+        }
+
         contacts.addAll(loadContactsFromCsv(this))
 
         setContent {
             CitofonoTheme {
-                var showAddContactForm by remember { mutableStateOf(false) }
-
-                if (showAddContactForm) {
-                    AddContactForm { newContact ->
-                        contacts.add(newContact)
-                        showAddContactForm = false
+                SearchScreen(
+                    contacts = contacts,
+                    onContactClick = { },
+                    onCallClick = { phoneNumber ->
+                        makeCall(phoneNumber)
+                    },
+                    onWhatsAppClick = { phoneNumber ->
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            data = Uri.parse("https://wa.me/56$phoneNumber")
+                        }
+                        startActivity(intent)
+                    },
+                    onSmsClick = { phoneNumber ->
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            data = Uri.parse("sms:+56$phoneNumber")
+                        }
+                        startActivity(intent)
                     }
-                } else {
-                    ContactList(contacts = contacts,
-                        onAddContact = {
-                            showAddContactForm = true
-                    },  onCallClick = { phoneNumber ->
-                            val intent = Intent(Intent.ACTION_DIAL).apply { this.data = Uri.parse("tel:+56$phoneNumber") }
-                            startActivity(intent)
-                    },  onWhatsAppClick = { phoneNumber ->
-                            val intent = Intent(Intent.ACTION_VIEW).apply { this.data = Uri.parse("https://wa.me/56$phoneNumber") }
-                            startActivity(intent)
-                    },  onSmsClick = { phoneNumber ->
-                            val intent = Intent(Intent.ACTION_VIEW).apply { this.data = Uri.parse( "sms:+56$phoneNumber") }
-                            startActivity(intent)
-                    }
-                    )
-                }
+                )
             }
         }
     }
+
+    private fun makeCall(phoneNumber: String) {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE)
+            == PackageManager.PERMISSION_GRANTED
+        ) {
+            val intent = Intent(Intent.ACTION_CALL).apply {
+                data = Uri.parse("tel:+56$phoneNumber")
+            }
+            startActivity(intent)
+        } else {
+            pendingPhoneNumber = phoneNumber
+            requestPermissionLauncher.launch(Manifest.permission.CALL_PHONE)
+        }
+    }
 }
+
