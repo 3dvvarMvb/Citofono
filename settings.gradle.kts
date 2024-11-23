@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Citofono"
+rootProject.name = "Citofono 1.0"
 include(":app")
