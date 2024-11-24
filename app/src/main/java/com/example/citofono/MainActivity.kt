@@ -1,64 +1,39 @@
 package com.example.citofono
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-//noinspection UsingMaterialAndMaterial3Libraries
 import androidx.compose.material.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.tooling.preview.Preview
-import com.example.citofono.ui.theme.CitofonoTheme
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import android.net.Uri
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Email
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.text.KeyboardOptions
-//noinspection UsingMaterialAndMaterial3Libraries
-import androidx.compose.material.Icon
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.text.input.KeyboardType
-import android.Manifest
-import android.content.pm.PackageManager
-import android.widget.Toast
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
-import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.contract.ActivityResultContracts
-
-
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    CitofonoTheme {
-        Greeting("Android")
-    }
-}
+import com.example.citofono.ui.theme.CitofonoTheme
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 data class Contact(
     val id: Int,
     val name: String,
-    val phoneNumber: List<String>
+    val phoneNumber: List<String>,
+    val department: String
 )
 
 @Composable
@@ -67,15 +42,16 @@ fun SearchScreen(
     onContactClick: (Contact) -> Unit,
     onCallClick: (String) -> Unit,
     onWhatsAppClick: (String) -> Unit,
-    onSmsClick: (String) -> Unit
+    onSmsClick: (String) -> Unit,
+    onDepartmentClick: (String) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
 
-    val filteredContacts = contacts
-        .sortedBy { it.name }
-        .filter   { contact ->
-        contact.name.contains(searchQuery, ignoreCase = true)
-    }
+    val filteredDepartments = contacts
+        .filter { it.department.contains(searchQuery, ignoreCase = true) }
+        .map { it.department }
+        .distinct()
+        .sorted()
 
     Column(
         modifier = Modifier
@@ -88,7 +64,6 @@ fun SearchScreen(
             value = searchQuery,
             onValueChange = { searchQuery = it },
             label = { Text("Buscar Departamento") },
-            keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -98,48 +73,16 @@ fun SearchScreen(
             LazyColumn(
                 modifier = Modifier.fillMaxWidth()
             ) {
-                if (filteredContacts.isNotEmpty()) {
-                    items(filteredContacts) { contact ->
-                        Column(
+                if (filteredDepartments.isNotEmpty()) {
+                    items(filteredDepartments) { department ->
+                        Text(
+                            text = "Departamento: $department",
+                            style = MaterialTheme.typography.body1,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(8.dp)
-                        ) {
-                            Text(
-                                text = "Departamento: ${contact.name}",
-                                style = MaterialTheme.typography.body1,
-                                modifier = Modifier
-                                    .padding(bottom = 8.dp)
-                            )
-
-                            contact.phoneNumber.forEachIndexed { index, phoneNumber ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        text = "Telefono ${index + 1}",
-                                        style = MaterialTheme.typography.body2,
-                                        modifier = Modifier.weight(1f)
-                                    )
-
-                                    Row {
-                                        IconButton(onClick = { onCallClick(phoneNumber) }) {
-                                            Icon(imageVector = Icons.Default.Call, contentDescription = "Llamar")
-                                        }
-                                        IconButton(onClick = { onWhatsAppClick(phoneNumber) }) {
-                                            Icon(imageVector = Icons.Default.Person, contentDescription = "WhatsApp")
-                                        }
-                                        IconButton(onClick = { onSmsClick(phoneNumber) }) {
-                                            Icon(imageVector = Icons.Default.Email, contentDescription = "SMS")
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                                .clickable { onDepartmentClick(department) }
+                        )
                     }
                 } else {
                     item {
@@ -155,8 +98,42 @@ fun SearchScreen(
     }
 }
 
+@Composable
+fun DepartmentContactsScreen(
+    department: String,
+    contacts: List<Contact>,
+    onContactClick: (Contact) -> Unit,
+    onCallClick: (String) -> Unit,
+    onWhatsAppClick: (String) -> Unit,
+    onSmsClick: (String) -> Unit
+) {
+    val departmentContacts = contacts.filter { it.department == department }
 
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Text(
+            text = "Contactos del Departamento: $department",
+            style = MaterialTheme.typography.h6,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
 
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            items(departmentContacts) { contact ->
+                ContactItem(
+                    contact = contact,
+                    onCallClick = onCallClick,
+                    onWhatsAppClick = onWhatsAppClick,
+                    onSmsClick = onSmsClick
+                )
+            }
+        }
+    }
+}
 
 @Composable
 fun ContactItem(
@@ -172,7 +149,7 @@ fun ContactItem(
     ) {
         Text(text = "Departamento: ${contact.name}", style = MaterialTheme.typography.body1)
 
-        contact.phoneNumber.forEach { phoneNumber ->
+        contact.phoneNumber.forEachIndexed { index, phoneNumber ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -180,7 +157,7 @@ fun ContactItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "+56 $phoneNumber",
+                    text = "Número ${index + 1}",
                     style = MaterialTheme.typography.body2,
                     modifier = Modifier.weight(1f)
                 )
@@ -201,53 +178,6 @@ fun ContactItem(
     }
 }
 
-
-
-
-@Composable
-fun AddContactForm(onAddContact: (Contact) -> Unit) {
-    var name by remember { mutableStateOf("") }
-    var currentPhoneNumber by remember { mutableStateOf("") }
-    var phoneNumbers by remember { mutableStateOf(listOf<String>()) }
-
-    Column(modifier = Modifier.padding(16.dp)) {
-        TextField(
-            value = name,
-            onValueChange = { name = it },
-            label = { Text("Name") }
-        )
-        TextField(
-            value = currentPhoneNumber,
-            onValueChange = { currentPhoneNumber = it },
-            label = { Text("Phone Number") }
-        )
-        Button(onClick = {
-            if (currentPhoneNumber.isNotBlank()) {
-                phoneNumbers = phoneNumbers + currentPhoneNumber
-                currentPhoneNumber = ""
-            }
-        }) {
-            Text("Add Phone Number")
-        }
-
-        phoneNumbers.forEach { number ->
-            Text(text = "+56 $number", style = MaterialTheme.typography.body2)
-        }
-
-        Button(
-            onClick = {
-                if (name.isNotBlank() && phoneNumbers.isNotEmpty()) {
-                    val newContact = Contact(id = 0, name = name, phoneNumber = phoneNumbers)
-                    onAddContact(newContact)
-                }
-            },
-            modifier = Modifier.padding(top = 16.dp)
-        ) {
-            Text("Add Contact")
-        }
-    }
-}
-
 fun loadContactsFromCsv(context: Context): List<Contact> {
     val contacts = mutableListOf<Contact>()
     val inputStream = context.resources.openRawResource(R.raw.contactos)
@@ -257,11 +187,12 @@ fun loadContactsFromCsv(context: Context): List<Contact> {
         lines.forEach { line ->
             val tokens = line.split(";")
             if (tokens.size >= 4) {
-                val phoneNumber = listOf(tokens[1],tokens[2])
+                val phoneNumber = listOf(tokens[1], tokens[2])
                 val contact = Contact(
                     id = contacts.size,
                     name = tokens[0],
-                    phoneNumber = phoneNumber.filter { it.isNotBlank() }
+                    phoneNumber = phoneNumber.filter { it.isNotBlank() },
+                    department = tokens[0]
                 )
                 contacts.add(contact)
             }
@@ -274,6 +205,7 @@ class MainActivity : ComponentActivity() {
     private val contacts = mutableStateListOf<Contact>()
     private lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
     private var pendingPhoneNumber: String? = null
+    private var selectedDepartment by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -293,25 +225,25 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             CitofonoTheme {
-                SearchScreen(
-                    contacts = contacts,
-                    onContactClick = { },
-                    onCallClick = { phoneNumber ->
-                        makeCall(phoneNumber)
-                    },
-                    onWhatsAppClick = { phoneNumber ->
-                        val intent = Intent(Intent.ACTION_VIEW).apply {
-                            data = Uri.parse("https://wa.me/56$phoneNumber")
-                        }
-                        startActivity(intent)
-                    },
-                    onSmsClick = { phoneNumber ->
-                        val intent = Intent(Intent.ACTION_VIEW).apply {
-                            data = Uri.parse("sms:+56$phoneNumber")
-                        }
-                        startActivity(intent)
-                    }
-                )
+                if (selectedDepartment == null) {
+                    SearchScreen(
+                        contacts = contacts,
+                        onContactClick = { },
+                        onCallClick = { phoneNumber -> makeCall(phoneNumber) },
+                        onWhatsAppClick = { phoneNumber -> openWhatsApp(phoneNumber) },
+                        onSmsClick = { phoneNumber -> sendSms(phoneNumber) },
+                        onDepartmentClick = { department -> selectedDepartment = department }
+                    )
+                } else {
+                    DepartmentContactsScreen(
+                        department = selectedDepartment!!,
+                        contacts = contacts,
+                        onContactClick = { },
+                        onCallClick = { phoneNumber -> makeCall(phoneNumber) },
+                        onWhatsAppClick = { phoneNumber -> openWhatsApp(phoneNumber) },
+                        onSmsClick = { phoneNumber -> sendSms(phoneNumber) }
+                    )
+                }
             }
         }
     }
@@ -329,5 +261,18 @@ class MainActivity : ComponentActivity() {
             requestPermissionLauncher.launch(Manifest.permission.CALL_PHONE)
         }
     }
-}
 
+    private fun openWhatsApp(phoneNumber: String) {
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            data = Uri.parse("https://wa.me/56$phoneNumber")
+        }
+        startActivity(intent)
+    }
+
+    private fun sendSms(phoneNumber: String) {
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            data = Uri.parse("sms:+56$phoneNumber")
+        }
+        startActivity(intent)
+    }
+}
