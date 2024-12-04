@@ -1,15 +1,11 @@
 package com.example.citofono
 
-import android.Manifest
-import android.content.ContentProviderOperation
 import android.content.Context
+import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.provider.ContactsContract
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -20,10 +16,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,8 +24,8 @@ import androidx.core.app.ActivityCompat
 import com.example.citofono.ui.theme.CitofonoTheme
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import kotlin.random.Random
 
-// Modelo de datos
 data class Contact(
     val id: Int,
     val name: String,
@@ -140,7 +132,7 @@ class MainActivity : ComponentActivity() {
             ActivityResultContracts.RequestPermission()
         ) { isGranted: Boolean ->
             if (isGranted) {
-                pendingPhoneNumber?.let { makeCallWithContact(it, "") }
+                pendingPhoneNumber?.let { makeCall(it) }
                 pendingPhoneNumber = null
             } else {
                 Toast.makeText(this, "Permiso denegado para realizar llamadas", Toast.LENGTH_SHORT).show()
@@ -153,14 +145,16 @@ class MainActivity : ComponentActivity() {
             CitofonoTheme {
                 SearchScreen(
                     contacts = contacts,
-                    onCallClick = { phoneNumber, department -> makeCallWithContact(phoneNumber, department) }
+                    onCallClick = { phoneNumber, department -> makeCall(phoneNumber) }
                 )
             }
         }
     }
 
-    private fun makeCallWithContact(phoneNumber: String, department: String) {
-        val contactId = createTemporaryContact(department, phoneNumber)
+    private fun makeCall(phoneNumber: String) {
+        val randomCallerId = generateRandomCallerId()
+        Toast.makeText(this, "Llamando como: $randomCallerId", Toast.LENGTH_SHORT).show()
+
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE)
             == PackageManager.PERMISSION_GRANTED
         ) {
@@ -168,7 +162,6 @@ class MainActivity : ComponentActivity() {
                 data = Uri.parse("tel:" + validatePhoneNumber(phoneNumber))
             }
             startActivity(intent)
-            deleteContactWithDelay(contactId)
         } else {
             pendingPhoneNumber = phoneNumber
             requestPermissionLauncher.launch(Manifest.permission.CALL_PHONE)
@@ -179,42 +172,10 @@ class MainActivity : ComponentActivity() {
         return if (phoneNumber.startsWith("+")) phoneNumber else "+56$phoneNumber"
     }
 
-    private fun createTemporaryContact(name: String, phoneNumber: String): String {
-        return try {
-            val ops = ArrayList<ContentProviderOperation>()
-            ops.add(
-                ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
-                    .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
-                    .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null)
-                    .build()
-            )
-            ops.add(
-                ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-                    .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
-                    .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
-                    .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, name)
-                    .build()
-            )
-            ops.add(
-                ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-                    .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
-                    .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
-                    .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, phoneNumber)
-                    .withValue(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
-                    .build()
-            )
-            val results = contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
-            results[0].uri?.lastPathSegment ?: ""
-        } catch (e: Exception) {
-            e.printStackTrace()
-            ""
-        }
-    }
-
-    private fun deleteContactWithDelay(contactId: String) {
-        Handler(Looper.getMainLooper()).postDelayed({
-            val uri = Uri.withAppendedPath(ContactsContract.RawContacts.CONTENT_URI, contactId)
-            contentResolver.delete(uri, null, null)
-        }, 5000) // Eliminar después de 5 segundos
+    private fun generateRandomCallerId(): String {
+        val characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+        return (1..9)
+            .map { characters.random() }
+            .joinToString("")
     }
 }
