@@ -15,6 +15,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,19 +36,19 @@ data class Contact(
 
 @Composable
 fun NumericKeyboard(onKeyClick: (String) -> Unit) {
-    val keys = listOf(
+    val numberKeys = listOf(
         "1", "2", "3",
         "4", "5", "6",
         "7", "8", "9",
-        "A", "0", "B",
-        "C", "D"
+        "0"
     )
+    val letterKeys = listOf("A", "B", "C", "D")
 
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        keys.chunked(3).forEach { rowKeys ->
+        numberKeys.chunked(3).forEach { rowKeys ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
@@ -55,12 +56,32 @@ fun NumericKeyboard(onKeyClick: (String) -> Unit) {
                 rowKeys.forEach { key ->
                     Button(
                         onClick = { onKeyClick(key) },
+                        shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
                             .padding(8.dp)
-                            .size(80.dp)
+                            .size(95.dp)
                     ) {
                         Text(text = key, style = MaterialTheme.typography.h4)
                     }
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            letterKeys.forEach { key ->
+                Button(
+                    onClick = { onKeyClick(key) },
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .padding(8.dp)
+                        .size(60.dp)
+                ) {
+                    Text(text = key, style = MaterialTheme.typography.h4)
                 }
             }
         }
@@ -78,6 +99,18 @@ fun SearchScreen(
     var selectedDepartment by remember { mutableStateOf("") }
     var selectedPhoneNumber by remember { mutableStateOf("") }
     var selectedPhoneIndex by remember { mutableStateOf(-1) }
+    var departmentNotFound by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(departmentNotFound) {
+        if (departmentNotFound) {
+            snackbarHostState.showSnackbar(
+                message = "DEPTO NO ENCONTRADO",
+                duration = SnackbarDuration.Short
+            )
+            departmentNotFound = false
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -86,6 +119,8 @@ fun SearchScreen(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        SnackbarHost(hostState = snackbarHostState)
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -94,7 +129,10 @@ fun SearchScreen(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 label = { Text("Buscar Departamento") },
-                modifier = Modifier.weight(1f)
+                textStyle = MaterialTheme.typography.h4,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(80.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
             Button(
@@ -120,7 +158,10 @@ fun SearchScreen(
                         selectedPhoneNumbers = firstContact.phoneNumber
                         selectedDepartment = firstContact.department
                         showDialog = true
+                        departmentNotFound = false
                     }
+                } else {
+                    departmentNotFound = true
                 }
             },
             modifier = Modifier
@@ -236,9 +277,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun makeCall(phoneNumber: String) {
-        val randomCallerId = generateRandomCallerId()
-        Toast.makeText(this, "Llamando como: $randomCallerId", Toast.LENGTH_SHORT).show()
-
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE)
             == PackageManager.PERMISSION_GRANTED
         ) {
@@ -254,12 +292,5 @@ class MainActivity : ComponentActivity() {
 
     private fun validatePhoneNumber(phoneNumber: String): String {
         return if (phoneNumber.startsWith("+")) phoneNumber else "+56$phoneNumber"
-    }
-
-    private fun generateRandomCallerId(): String {
-        val characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-        return (1..9)
-            .map { characters.random() }
-            .joinToString("")
     }
 }
