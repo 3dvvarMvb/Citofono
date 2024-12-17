@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.citofono"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
@@ -43,6 +43,8 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
+    implementation("org.apache.poi:poi-ooxml:5.2.3")
+
 
     implementation(platform("androidx.compose:compose-bom:2023.10.00"))
     implementation("androidx.compose.ui:ui")
@@ -64,4 +66,5 @@ dependencies {
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+
 }

@@ -13,20 +13,20 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.ActivityCompat
 import com.example.citofono.ui.theme.CitofonoTheme
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import kotlin.random.Random
-
 data class Contact(
     val id: Int,
     val name: String,
@@ -268,10 +268,27 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             CitofonoTheme {
-                SearchScreen(
-                    contacts = contacts,
-                    onCallClick = { phoneNumber, department -> makeCall(phoneNumber) }
-                )
+                val context = LocalContext.current
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        SearchScreen(
+                            contacts = contacts,
+                            onCallClick = { phoneNumber, department -> makeCall(phoneNumber) }
+                        )
+                    }
+
+                    FloatingActionButton(
+                        onClick = {
+                            val intent = Intent(context, AdminActivity::class.java)
+                            context.startActivity(intent)
+                        },
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(16.dp)
+                    ) {
+                        Icon(Icons.Default.Settings, contentDescription = "Ir a Admin")
+                    }
+                }
             }
         }
     }
