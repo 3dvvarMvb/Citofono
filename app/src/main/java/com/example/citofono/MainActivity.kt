@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -237,22 +238,30 @@ fun loadContactsFromCsv(context: Context): List<Contact> {
 
         reader.useLines { lines ->
             lines.forEach { line ->
-                val tokens = line.split(";")
+                val tokens = line.trim().split(";").map { it.trim() }
                 if (tokens.size >= 4) {
                     val phoneNumber = listOf(tokens[1], tokens[2])
+                    val department = tokens[0]
+
+                    Log.d("CSV_DEPARTMENT", "Departamento extraído: $department")
+
                     val contact = Contact(
                         id = contacts.size,
                         name = tokens[0],
                         phoneNumber = phoneNumber.filter { it.isNotBlank() },
-                        department = tokens[0]
+                        department = department
                     )
                     contacts.add(contact)
                 }
             }
         }
+    } else {
+        Toast.makeText(context, "El archivo CSV no existe.", Toast.LENGTH_SHORT).show()
     }
     return contacts
 }
+
+
 
 
 class MainActivity : ComponentActivity() {
