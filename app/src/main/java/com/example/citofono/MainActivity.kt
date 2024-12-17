@@ -2,7 +2,9 @@ package com.example.citofono
 
 import android.content.Context
 import android.Manifest
+import android.content.BroadcastReceiver
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -11,6 +13,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.registerForActivityResult
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,6 +28,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.ActivityCompat
 import com.example.citofono.ui.theme.CitofonoTheme
 import java.io.BufferedReader
+import java.io.File
+import java.io.FileInputStream
 import java.io.InputStreamReader
 import kotlin.random.Random
 data class Contact(
@@ -224,31 +229,44 @@ fun SearchScreen(
 
 fun loadContactsFromCsv(context: Context): List<Contact> {
     val contacts = mutableListOf<Contact>()
-    val inputStream = context.resources.openRawResource(R.raw.contactos)
-    val reader = BufferedReader(InputStreamReader(inputStream))
 
-    reader.useLines { lines ->
-        lines.forEach { line ->
-            val tokens = line.split(";")
-            if (tokens.size >= 4) {
-                val phoneNumber = listOf(tokens[1], tokens[2])
-                val contact = Contact(
-                    id = contacts.size,
-                    name = tokens[0],
-                    phoneNumber = phoneNumber.filter { it.isNotBlank() },
-                    department = tokens[0]
-                )
-                contacts.add(contact)
+    val file = File(context.filesDir, "contactos.csv")
+    if (file.exists()) {
+        val inputStream = FileInputStream(file)
+        val reader = BufferedReader(InputStreamReader(inputStream))
+
+        reader.useLines { lines ->
+            lines.forEach { line ->
+                val tokens = line.split(";")
+                if (tokens.size >= 4) {
+                    val phoneNumber = listOf(tokens[1], tokens[2])
+                    val contact = Contact(
+                        id = contacts.size,
+                        name = tokens[0],
+                        phoneNumber = phoneNumber.filter { it.isNotBlank() },
+                        department = tokens[0]
+                    )
+                    contacts.add(contact)
+                }
             }
         }
     }
     return contacts
 }
 
+
 class MainActivity : ComponentActivity() {
     private val contacts = mutableStateListOf<Contact>()
     private lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
     private var pendingPhoneNumber: String? = null
+
+    private val updateContactsReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            contacts.clear()
+            contacts.addAll(loadContactsFromCsv(context!!))
+            Toast.makeText(context, "Contactos actualizados", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -292,6 +310,18 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+    override fun onStart() {
+        super.onStart()
+        val filter = IntentFilter("com.example.citofono.UPDATE_CONTACTS")
+        val receiver = updateContactsReceiver
+        registerReceiver(receiver,filter, Context.RECEIVER_NOT_EXPORTED)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        unregisterReceiver(updateContactsReceiver)
+    }
+
 
     private fun makeCall(phoneNumber: String) {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE)

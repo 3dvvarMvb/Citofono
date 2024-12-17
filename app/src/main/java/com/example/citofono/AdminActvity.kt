@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -47,7 +49,6 @@ fun AdminScreen() {
     var errorMessage by remember { mutableStateOf("") }
     var isLoggedIn by remember { mutableStateOf(false) }
     var isChangingKey by remember { mutableStateOf(false) }
-
     var uploadSuccess by remember { mutableStateOf(false) }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -56,17 +57,21 @@ fun AdminScreen() {
         if (result.resultCode == Activity.RESULT_OK) {
             val uri = result.data?.data
             uri?.let {
-                if (getFileExtension(context, it) == "csv") {
-                    saveFileToInternalStorage(context, it, "contactos.csv")
-                    uploadSuccess = true
-                    Toast.makeText(context, "Archivo CSV actualizado correctamente", Toast.LENGTH_SHORT).show()
-                } else if (getFileExtension(context, it) == "xlsx") {
-                    val inputStream = context.contentResolver.openInputStream(it)
+                val fileExtension = getFileExtension(context, it)
+
+                if (fileExtension == "csv" || fileExtension == "xlsx") {
                     val outputFile = File(context.filesDir, "contactos.csv")
-                    inputStream?.let { input ->
-                        convertExcelToCsv(input, outputFile)
+                    if (fileExtension == "csv") {
+                        saveFileToInternalStorage(context, it, "contactos.csv")
                         uploadSuccess = true
-                        Toast.makeText(context, "Archivo Excel convertido y actualizado correctamente", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Archivo CSV actualizado correctamente", Toast.LENGTH_SHORT).show()
+                    } else {
+                        val inputStream = context.contentResolver.openInputStream(it)
+                        inputStream?.let { input ->
+                            convertExcelToCsv(input, outputFile)
+                            uploadSuccess = true
+                            Toast.makeText(context, "Archivo Excel convertido y actualizado correctamente", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 } else {
                     Toast.makeText(context, "Archivo inválido. Solo se permiten .csv o .xlsx", Toast.LENGTH_SHORT).show()
@@ -125,23 +130,39 @@ fun AdminScreen() {
                         val mimeTypes = arrayOf("text/csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                         intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes)
                         filePickerLauncher.launch(intent)
+
                     }
                 ) {
                     Text("Seleccionar archivo CSV o Excel")
                 }
 
+                Spacer(modifier = Modifier.height(8.dp))
+
                 if (uploadSuccess) {
-                    Text("Archivo subido y actualizado exitosamente.", color = MaterialTheme.colors.primary)
+                    updateContactsAfterUpload(context)
+                    Toast.makeText(context, "Archivo subido y actualizado exitosamente.", Toast.LENGTH_SHORT).show()
                 }
             }
 
-            FloatingActionButton(
-                onClick = { isChangingKey = true },
+            Row(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(16.dp)
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Icon(Icons.Default.Lock, contentDescription = "Cambiar clave")
+                FloatingActionButton(
+                    onClick = { isChangingKey = true }
+                ) {
+                    Icon(Icons.Default.Lock, contentDescription = "Cambiar clave")
+                }
+
+                FloatingActionButton(
+                    onClick = {
+                        exportFileToDownloads(context, "contactos.csv")
+                    }
+                ) {
+                    Icon(Icons.Default.ExitToApp, contentDescription = "Exportar archivo")
+                }
             }
         }
     }
@@ -219,33 +240,63 @@ fun LoginScreen(
 }
 
 fun getFileExtension(context: Context, uri: Uri): String {
-    val contentResolver = context.contentResolver
-    val mimeType = contentResolver.getType(uri)
-    return mimeType?.substringAfter("/").orEmpty()
+    var extension = ""
+
+    val cursor = context.contentResolver.query(uri, null, null, null, null)
+    cursor?.use {
+        if (it.moveToFirst()) {
+            val nameIndex = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            val fileName = it.getString(nameIndex)
+            extension = fileName.substringAfterLast('.', "")
+        }
+    }
+    return extension.lowercase()
 }
 
 fun convertExcelToCsv(inputStream: InputStream, outputFile: File) {
-    val workbook: Workbook = XSSFWorkbook(inputStream)
-    val sheet = workbook.getSheetAt(0)
-    val writer = BufferedWriter(FileWriter(outputFile))
+    try {
+        val workbook: Workbook = XSSFWorkbook(inputStream)
+        val sheet = workbook.getSheetAt(0)
+        val writer = BufferedWriter(FileWriter(outputFile))
 
-    for (row in sheet) {
-        val rowData = StringBuilder()
-        for (cell in row) {
-            when (cell.cellType) {
-                CellType.STRING -> rowData.append(cell.stringCellValue)
-                CellType.NUMERIC -> rowData.append(cell.numericCellValue.toString())
-                else -> rowData.append("")
+        for (row in sheet) {
+            val rowData = StringBuilder()
+
+            for (cell in row) {
+                when (cell.cellType) {
+                    CellType.STRING -> {
+                        rowData.append(cell.stringCellValue)
+                    }
+                    CellType.NUMERIC -> {
+                        val cellValue = cell.toString()
+
+                        if (cellValue.contains("E")) {
+                            val formattedValue = String.format("%.0f", cell.numericCellValue)
+                            rowData.append(formattedValue)
+                        } else {
+                            rowData.append(cellValue)
+                        }
+                    }
+                    else -> {
+                        rowData.append("")
+                    }
+                }
+                rowData.append(";")
             }
-            rowData.append(";")
-        }
-        writer.write(rowData.toString().dropLast(1))
-        writer.newLine()
-    }
 
-    writer.close()
-    workbook.close()
+
+            writer.write(rowData.toString().dropLast(1))
+            writer.newLine()
+        }
+
+        writer.close()
+        workbook.close()
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
 }
+
+
 
 fun saveFileToInternalStorage(context: Context, uri: Uri, fileName: String) {
     val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
@@ -257,4 +308,27 @@ fun saveFileToInternalStorage(context: Context, uri: Uri, fileName: String) {
             input.copyTo(output)
         }
     }
+}
+
+
+fun exportFileToDownloads(context: Context, fileName: String) {
+    val inputFile = File(context.filesDir, fileName)
+    val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+    val outputFile = File(downloadsDir, fileName)
+
+    try {
+        inputFile.inputStream().use { input ->
+            outputFile.outputStream().use { output ->
+                input.copyTo(output)
+            }
+        }
+        Toast.makeText(context, "Archivo exportado a: ${outputFile.absolutePath}", Toast.LENGTH_LONG).show()
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Toast.makeText(context, "Error al exportar el archivo", Toast.LENGTH_SHORT).show()
+    }
+}
+fun updateContactsAfterUpload(context: Context) {
+    val intent = Intent("com.example.citofono.UPDATE_CONTACTS")
+    context.sendBroadcast(intent)
 }
