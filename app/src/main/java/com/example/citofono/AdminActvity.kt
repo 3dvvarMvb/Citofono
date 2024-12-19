@@ -133,7 +133,7 @@ fun AdminScreen() {
 
                     }
                 ) {
-                    Text("Seleccionar archivo CSV o Excel")
+                    Text("Seleccionar archivo Excel")
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -154,14 +154,6 @@ fun AdminScreen() {
                     onClick = { isChangingKey = true }
                 ) {
                     Icon(Icons.Default.Lock, contentDescription = "Cambiar clave")
-                }
-
-                FloatingActionButton(
-                    onClick = {
-                        exportFileToDownloads(context, "contactos.csv")
-                    }
-                ) {
-                    Icon(Icons.Default.ExitToApp, contentDescription = "Exportar archivo")
                 }
             }
         }
@@ -311,24 +303,12 @@ fun saveFileToInternalStorage(context: Context, uri: Uri, fileName: String) {
 }
 
 
-fun exportFileToDownloads(context: Context, fileName: String) {
-    val inputFile = File(context.filesDir, fileName)
-    val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-    val outputFile = File(downloadsDir, fileName)
-
-    try {
-        inputFile.inputStream().use { input ->
-            outputFile.outputStream().use { output ->
-                input.copyTo(output)
-            }
-        }
-        Toast.makeText(context, "Archivo exportado a: ${outputFile.absolutePath}", Toast.LENGTH_LONG).show()
-    } catch (e: Exception) {
-        e.printStackTrace()
-        Toast.makeText(context, "Error al exportar el archivo", Toast.LENGTH_SHORT).show()
-    }
-}
 fun updateContactsAfterUpload(context: Context) {
     val intent = Intent("com.example.citofono.UPDATE_CONTACTS")
     context.sendBroadcast(intent)
+
+    // Redirigir a la MainActivity
+    val mainActivityIntent = Intent(context, MainActivity::class.java)
+    mainActivityIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+    context.startActivity(mainActivityIntent)
 }
