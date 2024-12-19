@@ -1,8 +1,9 @@
 package com.example.citofono
 
-import android.content.Context
 import android.Manifest
+import android.app.Activity
 import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
@@ -23,15 +24,15 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import com.example.citofono.ui.theme.CitofonoTheme
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileInputStream
 import java.io.InputStreamReader
-import kotlin.random.Random
+
 data class Contact(
     val id: Int,
     val name: String,
@@ -254,11 +255,23 @@ fun loadContactsFromCsv(context: Context): List<Contact> {
     return contacts
 }
 
-
 class MainActivity : ComponentActivity() {
     private val contacts = mutableStateListOf<Contact>()
     private lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
     private var pendingPhoneNumber: String? = null
+
+    private val importContactsLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val importedContacts = result.data?.getParcelableArrayListExtra<Contact>("contacts")
+            if (importedContacts != null) {
+                contacts.clear()
+                contacts.addAll(importedContacts)
+                Toast.makeText(this, "Contactos importados", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     private val updateContactsReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -297,31 +310,31 @@ class MainActivity : ComponentActivity() {
 
                     FloatingActionButton(
                         onClick = {
-                            val intent = Intent(context, AdminActivity::class.java)
-                            context.startActivity(intent)
+                            val intent = Intent(context, ImportContactsActivity::class.java)
+                            importContactsLauncher.launch(intent)
                         },
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .padding(16.dp)
                     ) {
-                        Icon(Icons.Default.Settings, contentDescription = "Ir a Admin")
+                        Icon(Icons.Default.Settings, contentDescription = "Importar Contactos")
                     }
                 }
             }
         }
     }
+
     override fun onStart() {
         super.onStart()
         val filter = IntentFilter("com.example.citofono.UPDATE_CONTACTS")
         val receiver = updateContactsReceiver
-        registerReceiver(receiver,filter, Context.RECEIVER_NOT_EXPORTED)
+        registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
     }
 
     override fun onStop() {
         super.onStop()
         unregisterReceiver(updateContactsReceiver)
     }
-
 
     private fun makeCall(phoneNumber: String) {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE)
