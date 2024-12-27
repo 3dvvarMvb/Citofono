@@ -348,11 +348,8 @@ fun updateContactsAfterUpload(context: Context) {
                     val name = parts[0].trim()
                     val phoneNumbers = parts.drop(1).map { it.trim() }
 
-                    // Generar un ID único para el contacto
-                    val id = contacts.size // o alguna lógica para generar un ID único
-                    val department = name // o una lógica específica para obtener el departamento
-
-                    // Crear la instancia de Contact
+                    val id = contacts.size 
+                    val department = name 
                     contacts.add(Contact(id, name, phoneNumbers, department))
                 }
 
