@@ -1,11 +1,16 @@
 package com.example.citofono
 
 import android.app.Activity
+import android.content.ContentResolver
+import android.content.ContentUris
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
+import android.provider.ContactsContract
 import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -25,24 +30,50 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.example.citofono.ui.theme.CitofonoTheme
 import org.apache.poi.ss.usermodel.*
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.io.*
 
 class AdminActivity : ComponentActivity() {
+
+    companion object {
+        private const val REQUEST_WRITE_CONTACTS_PERMISSION = 1
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             CitofonoTheme {
-                AdminScreen()
+                AdminScreen(this)
             }
         }
     }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_WRITE_CONTACTS_PERMISSION) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "Permiso para escribir contactos otorgado.", Toast.LENGTH_SHORT).show()
+                updateContactsAfterUpload(this)
+            } else {
+                Toast.makeText(this, "Permiso para escribir contactos denegado.", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+
+
 }
 
 @Composable
-fun AdminScreen() {
+fun AdminScreen(adminActivity: AdminActivity) {
     val context = LocalContext.current
     val sharedPreferences = context.getSharedPreferences("admin_prefs", Context.MODE_PRIVATE)
     var savedKey by remember { mutableStateOf(sharedPreferences.getString("admin_key", "1234") ?: "1234") }
@@ -126,12 +157,13 @@ fun AdminScreen() {
 
                 Button(
                     onClick = {
-                        val intent = Intent(Intent.ACTION_GET_CONTENT)
-                        intent.type = "*/*"
-                        val mimeTypes = arrayOf("text/csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                        intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes)
-                        filePickerLauncher.launch(intent)
-
+                        checkAndRequestWriteContactsPermission(adminActivity) {
+                            val intent = Intent(Intent.ACTION_GET_CONTENT)
+                            intent.type = "*/*"
+                            val mimeTypes = arrayOf("text/csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                            intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes)
+                            filePickerLauncher.launch(intent)
+                        }
                     }
                 ) {
                     Text("Seleccionar archivo CSV o Excel")
@@ -336,9 +368,14 @@ fun exportFileToDownloads(context: Context, fileName: String) {
         Toast.makeText(context, "Error al exportar el archivo", Toast.LENGTH_SHORT).show()
     }
 }
+
 fun updateContactsAfterUpload(context: Context) {
     val csvFile = File(context.filesDir, "contactos.csv")
-    if (!csvFile.exists()) return
+    if (!csvFile.exists()) {
+        Toast.makeText(context, "Archivo CSV no encontrado.", Toast.LENGTH_SHORT).show()
+        return
+    }
+
     try {
         val contacts = mutableListOf<Contact>()
         csvFile.bufferedReader().useLines { lines ->
@@ -347,35 +384,94 @@ fun updateContactsAfterUpload(context: Context) {
                 if (parts.size >= 2) {
                     val name = parts[0].trim()
                     val phoneNumbers = parts.drop(1).map { it.trim() }
-
-                    val id = contacts.size 
-                    val department = name 
-                    contacts.add(Contact(id, name, phoneNumbers, department))
+                    contacts.add(Contact(contacts.size, name, phoneNumbers, name))
                 }
-
             }
         }
+
         generateVcfFile(context, contacts)
         Toast.makeText(context, "Archivo VCF generado correctamente", Toast.LENGTH_SHORT).show()
+
+        contacts.forEach { contact ->
+            addContactToPhone(contact.name, contact.phoneNumber, context)
+        }
+
+        Toast.makeText(context, "Contactos importados al teléfono correctamente.", Toast.LENGTH_SHORT).show()
     } catch (e: Exception) {
         e.printStackTrace()
+        Toast.makeText(context, "Error al procesar contactos: ${e.message}", Toast.LENGTH_SHORT).show()
     }
 }
 
+
+
+
 fun generateVcfFile(context: Context, contacts: List<Contact>) {
     val vcfFile = File(context.filesDir, "contactos.vcf")
-    val writer = FileWriter(vcfFile)
     try {
-        contacts.forEach { contact ->
-            writer.appendLine("BEGIN:VCARD")
-            writer.appendLine("VERSION:3.0")
-            writer.appendLine("FN:${contact.name}")
-            contact.phoneNumber.forEach { phone ->
-                writer.appendLine("TEL:$phone")
+        FileWriter(vcfFile).use { writer ->
+            contacts.forEach { contact ->
+                writer.appendLine("BEGIN:VCARD")
+                writer.appendLine("VERSION:3.0")
+                writer.appendLine("FN:${contact.name}")
+                contact.phoneNumber.forEach { phone ->
+                    writer.appendLine("TEL:$phone")
+                }
+                writer.appendLine("END:VCARD")
             }
-            writer.appendLine("END:VCARD")
         }
-    } finally {
-        writer.close()
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Toast.makeText(context, "Error al generar archivo VCF: ${e.message}", Toast.LENGTH_LONG).show()
+    }
+}
+
+
+private fun addContactToPhone(name: String, phoneNumbers: List<String>, context: Context) {
+    val contentResolver = context.contentResolver
+
+    try {
+        val contactUri = contentResolver.insert(ContactsContract.RawContacts.CONTENT_URI, ContentValues())
+            ?: throw Exception("Error al insertar contacto")
+        val rawContactId = ContentUris.parseId(contactUri)
+
+        val nameValues = ContentValues().apply {
+            put(ContactsContract.Data.RAW_CONTACT_ID, rawContactId)
+            put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
+            put(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, name)
+        }
+        contentResolver.insert(ContactsContract.Data.CONTENT_URI, nameValues)
+
+        phoneNumbers.forEach { number ->
+            val cleanedNumber = cleanPhoneNumber(number)
+            val phoneValues = ContentValues().apply {
+                put(ContactsContract.Data.RAW_CONTACT_ID, rawContactId)
+                put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
+                put(ContactsContract.CommonDataKinds.Phone.NUMBER, cleanedNumber)
+                put(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
+            }
+            contentResolver.insert(ContactsContract.Data.CONTENT_URI, phoneValues)
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Toast.makeText(context, "Error al agregar contacto: ${e.message}", Toast.LENGTH_LONG).show()
+    }
+}
+
+private fun cleanPhoneNumber(phoneNumber: String): String {
+    return phoneNumber.replace("[^+\\d]".toRegex(), "")
+}
+
+private val REQUEST_WRITE_CONTACTS_PERMISSION = 1
+
+fun checkAndRequestWriteContactsPermission(activity: Activity, onPermissionGranted: () -> Unit) {
+    if (ContextCompat.checkSelfPermission(activity, android.Manifest.permission.WRITE_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
+        ActivityCompat.requestPermissions(
+            activity,
+            arrayOf(android.Manifest.permission.WRITE_CONTACTS),
+            REQUEST_WRITE_CONTACTS_PERMISSION
+        )
+    } else {
+        onPermissionGranted()
     }
 }
