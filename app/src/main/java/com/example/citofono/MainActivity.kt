@@ -23,15 +23,15 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import com.example.citofono.ui.theme.CitofonoTheme
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileInputStream
 import java.io.InputStreamReader
-import kotlin.random.Random
+
 data class Contact(
     val id: Int,
     val name: String,
@@ -254,12 +254,13 @@ fun loadContactsFromCsv(context: Context): List<Contact> {
     return contacts
 }
 
-
 class MainActivity : ComponentActivity() {
+
     private val contacts = mutableStateListOf<Contact>()
     private lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
     private var pendingPhoneNumber: String? = null
 
+    // BroadcastReceiver para actualizar contactos
     private val updateContactsReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             contacts.clear()
@@ -270,6 +271,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Iniciar Lock Task Mode (Kiosk) al crear la actividad
+        startKioskMode()
 
         requestPermissionLauncher = registerForActivityResult(
             ActivityResultContracts.RequestPermission()
@@ -282,6 +286,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // Cargar contactos al iniciar la app
         contacts.addAll(loadContactsFromCsv(this))
 
         setContent {
@@ -297,6 +302,10 @@ class MainActivity : ComponentActivity() {
 
                     FloatingActionButton(
                         onClick = {
+                            // Aquí podrías crear un método para salir del kiosk
+                            // llamando a stopKioskMode() si gustas:
+                            // stopKioskMode()
+                            // O simplemente abrir AdminActivity:
                             val intent = Intent(context, AdminActivity::class.java)
                             context.startActivity(intent)
                         },
@@ -310,11 +319,11 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
     override fun onStart() {
         super.onStart()
         val filter = IntentFilter("com.example.citofono.UPDATE_CONTACTS")
-        val receiver = updateContactsReceiver
-        registerReceiver(receiver,filter, Context.RECEIVER_NOT_EXPORTED)
+        registerReceiver(updateContactsReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
     }
 
     override fun onStop() {
@@ -322,7 +331,28 @@ class MainActivity : ComponentActivity() {
         unregisterReceiver(updateContactsReceiver)
     }
 
+    // ---------------------------------------------
+    // Modo Kiosk (Lock Task): iniciar y detener
+    // ---------------------------------------------
+    private fun startKioskMode() {
+        try {
+            startLockTask()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 
+    private fun stopKioskMode() {
+        try {
+            stopLockTask()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    // ---------------------------------------------
+    // Lógica para realizar llamadas telefónicas
+    // ---------------------------------------------
     private fun makeCall(phoneNumber: String) {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE)
             == PackageManager.PERMISSION_GRANTED

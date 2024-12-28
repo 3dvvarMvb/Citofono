@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.example.citofono">
 
+    <!-- Permiso para llamadas telefónicas -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
 
-    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <!-- Feature telephony (no obligatorio, pero ya lo tenías) -->
+    <uses-feature
+        android:name="android.hardware.telephony"
+        android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -17,19 +23,39 @@
         android:theme="@style/Theme.Citofono"
         tools:targetApi="31">
 
+        <!-- MAIN ACTIVITY con Lock Task Mode habilitado -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:theme="@style/Theme.Citofono">
+            android:theme="@style/Theme.Citofono"
+            android:lockTaskMode="if_whitelisted">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Activity de administración -->
         <activity
             android:name=".AdminActivity"
             android:exported="true" />
+
+        <!-- Receiver para Device Admin (modo kiosco real) -->
+        <receiver
+            android:name=".MyDeviceAdminReceiver"
+            android:label="@string/my_device_admin_label"
+            android:description="@string/admin_receiver_description"
+            android:exported="true"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin_receiver" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED"/>
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>
