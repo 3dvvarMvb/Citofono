@@ -1,15 +1,13 @@
 package com.example.citofono
 
+import android.content.Context
 import android.Manifest
 import android.content.BroadcastReceiver
-import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
-import android.telephony.PhoneStateListener
-import android.telephony.TelephonyManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -34,9 +32,6 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.InputStreamReader
 
-// -------------------------------------------------
-// DATA CLASS
-// -------------------------------------------------
 data class Contact(
     val id: Int,
     val name: String,
@@ -44,9 +39,6 @@ data class Contact(
     val department: String
 )
 
-// -------------------------------------------------
-// COMPOSABLES
-// -------------------------------------------------
 @Composable
 fun NumericKeyboard(onKeyClick: (String) -> Unit) {
     val numberKeys = listOf(
@@ -235,15 +227,14 @@ fun SearchScreen(
     }
 }
 
-// -------------------------------------------------
-// FUNCION PARA CARGAR CONTACTOS
-// -------------------------------------------------
 fun loadContactsFromCsv(context: Context): List<Contact> {
     val contacts = mutableListOf<Contact>()
+
     val file = File(context.filesDir, "contactos.csv")
     if (file.exists()) {
         val inputStream = FileInputStream(file)
         val reader = BufferedReader(InputStreamReader(inputStream))
+
         reader.useLines { lines ->
             lines.forEach { line ->
                 val tokens = line.split(";")
@@ -263,41 +254,11 @@ fun loadContactsFromCsv(context: Context): List<Contact> {
     return contacts
 }
 
-// -------------------------------------------------
-// MAIN ACTIVITY
-// -------------------------------------------------
 class MainActivity : ComponentActivity() {
 
     private val contacts = mutableStateListOf<Contact>()
     private lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
     private var pendingPhoneNumber: String? = null
-
-    // TelephonyManager para escuchar estado de llamada
-    private lateinit var telephonyManager: TelephonyManager
-
-    // Permiso para leer el estado de llamadas
-    private lateinit var phoneStatePermissionLauncher: ActivityResultLauncher<String>
-
-    // Escucha de estado de llamadas
-    private val phoneStateListener = object : PhoneStateListener() {
-        override fun onCallStateChanged(state: Int, phoneNumber: String?) {
-            super.onCallStateChanged(state, phoneNumber)
-            when (state) {
-                TelephonyManager.CALL_STATE_OFFHOOK -> {
-                    // La llamada está en curso (saliente o atendida)
-                    stopKioskMode()
-                }
-                TelephonyManager.CALL_STATE_IDLE -> {
-                    // No hay llamada o se finalizó la llamada
-                    startKioskMode()
-                }
-                TelephonyManager.CALL_STATE_RINGING -> {
-                    // Sonando (entrante), opcionalmente puedes
-                    // llamar a stopKioskMode() si quieres liberar la UI en este punto
-                }
-            }
-        }
-    }
 
     // BroadcastReceiver para actualizar contactos
     private val updateContactsReceiver = object : BroadcastReceiver() {
@@ -308,38 +269,26 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // ---------------------------------------------
+    // ADDED: Referencias para DevicePolicyManager
+    // ---------------------------------------------
+    private val devicePolicyManager by lazy {
+        getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+    }
+    private val adminComponentName by lazy {
+        android.content.ComponentName(this, MyDeviceAdminReceiver::class.java)
+    }
+    // ---------------------------------------------
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Instanciar TelephonyManager
-        telephonyManager = getSystemService(TELEPHONY_SERVICE) as TelephonyManager
-
-        // Launcher para solicitar READ_PHONE_STATE
-        phoneStatePermissionLauncher = registerForActivityResult(
-            ActivityResultContracts.RequestPermission()
-        ) { granted ->
-            if (!granted) {
-                Toast.makeText(this, "Permiso READ_PHONE_STATE denegado", Toast.LENGTH_SHORT).show()
-            } else {
-                // Ya tenemos permiso, podemos escuchar estado de llamadas
-                startListeningCallState()
-            }
-        }
-
-        // Revisa si ya se tiene READ_PHONE_STATE, si no, lo pide
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            phoneStatePermissionLauncher.launch(Manifest.permission.READ_PHONE_STATE)
-        } else {
-            // Ya tienes el permiso, comienzas a escuchar
-            startListeningCallState()
-        }
+        // ADDED: Configurar la whitelist del modo kiosk (Lock Task) con el dialer
+        configureLockTaskPackages()
 
         // Iniciar Lock Task Mode (Kiosk) al crear la actividad
         startKioskMode()
 
-        // Lógica para permisos de llamada (CALL_PHONE)
         requestPermissionLauncher = registerForActivityResult(
             ActivityResultContracts.RequestPermission()
         ) { isGranted: Boolean ->
@@ -351,10 +300,9 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Cargar contactos al iniciar
+        // Cargar contactos al iniciar la app
         contacts.addAll(loadContactsFromCsv(this))
 
-        // Renderizar UI
         setContent {
             CitofonoTheme {
                 val context = LocalContext.current
@@ -362,15 +310,16 @@ class MainActivity : ComponentActivity() {
                     Column(modifier = Modifier.fillMaxSize()) {
                         SearchScreen(
                             contacts = contacts,
-                            onCallClick = { phoneNumber, department ->
-                                makeCall(phoneNumber)
-                            }
+                            onCallClick = { phoneNumber, department -> makeCall(phoneNumber) }
                         )
                     }
 
                     FloatingActionButton(
                         onClick = {
-                            // Ej. abrir AdminActivity, etc.
+                            // Aquí podrías crear un método para salir del kiosk
+                            // llamando a stopKioskMode() si gustas:
+                            // stopKioskMode()
+                            // O simplemente abrir AdminActivity:
                             val intent = Intent(context, AdminActivity::class.java)
                             context.startActivity(intent)
                         },
@@ -394,10 +343,31 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         unregisterReceiver(updateContactsReceiver)
-
-        // Dejar de escuchar cuando la Activity no esté en primer plano
-        telephonyManager.listen(phoneStateListener, PhoneStateListener.LISTEN_NONE)
     }
+
+    // ---------------------------------------------
+    // ADDED: configurar la whitelist para modo kiosk
+    // ---------------------------------------------
+    private fun configureLockTaskPackages() {
+        try {
+            // El dialer varía según el dispositivo: "com.android.dialer", "com.google.android.dialer", etc.
+            devicePolicyManager.setLockTaskPackages(
+                adminComponentName,
+                arrayOf(
+                    packageName,
+                    "com.android.dialer" // Ajusta según tu dispositivo
+                )
+            )
+        } catch (e: SecurityException) {
+            e.printStackTrace()
+            Toast.makeText(
+                this,
+                "No se pudo configurar LockTaskPackages. ¿La app es Device Owner?",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+    // ---------------------------------------------
 
     // ---------------------------------------------
     // Modo Kiosk (Lock Task): iniciar y detener
@@ -415,17 +385,6 @@ class MainActivity : ComponentActivity() {
             stopLockTask()
         } catch (e: Exception) {
             e.printStackTrace()
-        }
-    }
-
-    // ---------------------------------------------
-    // Iniciar escucha estado de llamadas
-    // ---------------------------------------------
-    private fun startListeningCallState() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE)
-            == PackageManager.PERMISSION_GRANTED
-        ) {
-            telephonyManager.listen(phoneStateListener, PhoneStateListener.LISTEN_CALL_STATE)
         }
     }
 
