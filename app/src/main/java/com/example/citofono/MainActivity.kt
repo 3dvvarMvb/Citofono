@@ -409,3 +409,4 @@ class MainActivity : ComponentActivity() {
         return if (phoneNumber.startsWith("+")) phoneNumber else "+56$phoneNumber"
     }
 }
+//martuko puto
