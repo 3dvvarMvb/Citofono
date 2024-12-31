@@ -64,7 +64,7 @@ fun NumericKeyboard(onKeyClick: (String) -> Unit) {
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
                             .padding(8.dp)
-                            .size(95.dp)
+                            .size(110.dp)
                     ) {
                         Text(text = key, style = MaterialTheme.typography.h4)
                     }
@@ -84,7 +84,7 @@ fun NumericKeyboard(onKeyClick: (String) -> Unit) {
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier
                         .padding(8.dp)
-                        .size(60.dp)
+                        .size(100.dp)
                 ) {
                     Text(text = key, style = MaterialTheme.typography.h4)
                 }
@@ -338,6 +338,10 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         val filter = IntentFilter("com.example.citofono.UPDATE_CONTACTS")
         registerReceiver(updateContactsReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+
+        // Actualizar contactos al iniciar la actividad
+        contacts.clear()
+        contacts.addAll(loadContactsFromCsv(this))
     }
 
     override fun onStop() {
@@ -355,7 +359,9 @@ class MainActivity : ComponentActivity() {
                 adminComponentName,
                 arrayOf(
                     packageName,
-                    "com.android.dialer" // Ajusta según tu dispositivo
+                    "com.android.dialer",
+                    "com.google.android.dialer",
+                    "com.android.incallui"// Ajusta según tu dispositivo
                 )
             )
         } catch (e: SecurityException) {

@@ -1,6 +1,8 @@
 package com.example.citofono
 
 import android.app.Activity
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.ContentValues
@@ -29,13 +31,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.citofono.ui.theme.CitofonoTheme
 import org.apache.poi.ss.usermodel.*
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.io.*
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 
 class AdminActivity : ComponentActivity() {
 
@@ -43,12 +48,28 @@ class AdminActivity : ComponentActivity() {
         private const val REQUEST_WRITE_CONTACTS_PERMISSION = 1
     }
 
+    private val devicePolicyManager by lazy {
+        getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+    }
+    private val adminComponentName by lazy {
+        ComponentName(this, MyDeviceAdminReceiver::class.java)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             CitofonoTheme {
-                AdminScreen(this)
+                AdminScreen(this, onExitKioskClick = { stopKioskMode() })
             }
+        }
+    }
+
+    private fun stopKioskMode() {
+        try {
+            stopLockTask()
+            Toast.makeText(this, "Saliendo del modo Kiosk", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -67,13 +88,10 @@ class AdminActivity : ComponentActivity() {
             }
         }
     }
-
-
-
 }
 
 @Composable
-fun AdminScreen(adminActivity: AdminActivity) {
+fun AdminScreen(adminActivity: AdminActivity, onExitKioskClick: () -> Unit) {
     val context = LocalContext.current
     val sharedPreferences = context.getSharedPreferences("admin_prefs", Context.MODE_PRIVATE)
     var savedKey by remember { mutableStateOf(sharedPreferences.getString("admin_key", "1234") ?: "1234") }
@@ -164,9 +182,13 @@ fun AdminScreen(adminActivity: AdminActivity) {
                             intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes)
                             filePickerLauncher.launch(intent)
                         }
-                    }
+                    },
+                    modifier = Modifier
+                        .padding(8.dp)
+                        .fillMaxWidth()
+                        .height(80.dp)
                 ) {
-                    Text("Seleccionar archivo CSV o Excel")
+                    Text(text = "Seleccionar archivo Excel", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -174,6 +196,20 @@ fun AdminScreen(adminActivity: AdminActivity) {
                 if (uploadSuccess) {
                     updateContactsAfterUpload(context)
                     Toast.makeText(context, "Archivo subido y actualizado exitosamente.", Toast.LENGTH_SHORT).show()
+                }
+
+                Text("Boton para manejar android libremente", style = MaterialTheme.typography.h6)
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = { onExitKioskClick() },
+                    modifier = Modifier
+                        .padding(8.dp)
+                        .fillMaxWidth()
+                        .height(80.dp)
+                ) {
+                    Text(text = "Salir del modo Kiosk", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -211,6 +247,9 @@ fun AdminScreen(adminActivity: AdminActivity) {
 @Composable
 fun ChangeKeyScreen(onSaveKey: (String) -> Unit) {
     var newKey by remember { mutableStateOf("") }
+    var confirmKey by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf("") }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -228,12 +267,51 @@ fun ChangeKeyScreen(onSaveKey: (String) -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .border(1.dp, MaterialTheme.colors.primary)
-                .padding(16.dp)
+                .padding(16.dp),
+            visualTransformation = PasswordVisualTransformation(),
+            decorationBox = { innerTextField ->
+                if (newKey.isEmpty()) {
+                    Text("Nueva clave", color = MaterialTheme.colors.onSurface.copy(alpha = 0.3f))
+                }
+                innerTextField()
+            }
         )
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Button(onClick = { onSaveKey(newKey) }) {
+        BasicTextField(
+            value = confirmKey,
+            onValueChange = { confirmKey = it },
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, MaterialTheme.colors.primary)
+                .padding(16.dp),
+            visualTransformation = PasswordVisualTransformation(),
+            decorationBox = { innerTextField ->
+                if (confirmKey.isEmpty()) {
+                    Text("Confirmar clave", color = MaterialTheme.colors.onSurface.copy(alpha = 0.3f))
+                }
+                innerTextField()
+            }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (errorMessage.isNotEmpty()) {
+            Text(
+                text = errorMessage,
+                color = MaterialTheme.colors.error,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+        }
+
+        Button(onClick = {
+            if (newKey == confirmKey) {
+                onSaveKey(newKey)
+            } else {
+                errorMessage = "Las claves no coinciden. Inténtalo de nuevo."
+            }
+        }) {
             Text("Guardar Clave")
         }
     }
@@ -260,7 +338,8 @@ fun LoginScreen(
         TextField(
             value = key,
             onValueChange = onKeyChange,
-            label = { Text("Clave de administrador") }
+            label = { Text("Clave de administrador") },
+            visualTransformation = PasswordVisualTransformation()
         )
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -324,7 +403,6 @@ fun convertExcelToCsv(inputStream: InputStream, outputFile: File) {
                 rowData.append(";")
             }
 
-
             writer.write(rowData.toString().dropLast(1))
             writer.newLine()
         }
@@ -335,8 +413,6 @@ fun convertExcelToCsv(inputStream: InputStream, outputFile: File) {
         e.printStackTrace()
     }
 }
-
-
 
 fun saveFileToInternalStorage(context: Context, uri: Uri, fileName: String) {
     val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
@@ -349,7 +425,6 @@ fun saveFileToInternalStorage(context: Context, uri: Uri, fileName: String) {
         }
     }
 }
-
 
 fun exportFileToDownloads(context: Context, fileName: String) {
     val inputFile = File(context.filesDir, fileName)
@@ -403,9 +478,6 @@ fun updateContactsAfterUpload(context: Context) {
     }
 }
 
-
-
-
 fun generateVcfFile(context: Context, contacts: List<Contact>) {
     val vcfFile = File(context.filesDir, "contactos.vcf")
     try {
@@ -425,7 +497,6 @@ fun generateVcfFile(context: Context, contacts: List<Contact>) {
         Toast.makeText(context, "Error al generar archivo VCF: ${e.message}", Toast.LENGTH_LONG).show()
     }
 }
-
 
 private fun addContactToPhone(name: String, phoneNumbers: List<String>, context: Context) {
     val contentResolver = context.contentResolver
