@@ -19,6 +19,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.BasicTextField
@@ -30,7 +31,10 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,8 +45,14 @@ import org.apache.poi.ss.usermodel.*
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.io.*
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.graphics.Color
+
+val customColor = Color(red = 250, green = 244, blue = 226, alpha = 255)
+val customColor2 = Color(red = 192, green = 76, blue = 54, alpha = 255)
 
 class AdminActivity : ComponentActivity() {
+
 
     companion object {
         private const val REQUEST_WRITE_CONTACTS_PERMISSION = 1
@@ -130,7 +140,16 @@ fun AdminScreen(adminActivity: AdminActivity, onExitKioskClick: () -> Unit) {
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Image(
+            painter = painterResource(id = R.drawable.fondoapp2),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+
         if (!isLoggedIn) {
             LoginScreen(
                 key = key,
@@ -169,7 +188,10 @@ fun AdminScreen(adminActivity: AdminActivity, onExitKioskClick: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Text("Actualizar archivo de contactos", style = MaterialTheme.typography.h6)
+                Text("Actualizar archivo de contactos",
+                    style = MaterialTheme.typography.h6,
+                    color = customColor
+                    )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -183,33 +205,42 @@ fun AdminScreen(adminActivity: AdminActivity, onExitKioskClick: () -> Unit) {
                             filePickerLauncher.launch(intent)
                         }
                     },
-                    modifier = Modifier
-                        .padding(8.dp)
+                    modifier = Modifier.padding(top = 16.dp)
                         .fillMaxWidth()
-                        .height(80.dp)
+                        .height(70.dp),
+                        colors = ButtonDefaults.buttonColors(backgroundColor = customColor2)
                 ) {
-                    Text(text = "Seleccionar archivo Excel", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text(text = "Seleccionar archivo Excel",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = customColor)
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 if (uploadSuccess) {
                     updateContactsAfterUpload(context)
                     Toast.makeText(context, "Archivo subido y actualizado exitosamente.", Toast.LENGTH_SHORT).show()
                 }
 
-                Text("Boton para manejar android libremente", style = MaterialTheme.typography.h6)
+                Text("Boton para manejar android libremente",
+                    style = MaterialTheme.typography.h6,
+                    color = customColor
+                    )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Button(
                     onClick = { onExitKioskClick() },
-                    modifier = Modifier
-                        .padding(8.dp)
+                    modifier = Modifier.padding(top = 16.dp)
                         .fillMaxWidth()
-                        .height(80.dp)
+                        .height(70.dp),
+                        colors = ButtonDefaults.buttonColors(backgroundColor = customColor2)
                 ) {
-                    Text(text = "Salir del modo Kiosk", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text(text = "Salir del modo Kiosk",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = customColor)
                 }
             }
 
@@ -220,24 +251,23 @@ fun AdminScreen(adminActivity: AdminActivity, onExitKioskClick: () -> Unit) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 FloatingActionButton(
-                    onClick = { isChangingKey = true }
-                ) {
-                    Icon(Icons.Default.Lock, contentDescription = "Cambiar clave")
-                }
-
-                FloatingActionButton(
-                    onClick = {
-                        exportFileToDownloads(context, "contactos.csv")
-                    }
-                ) {
-                    Icon(Icons.Default.ExitToApp, contentDescription = "Exportar archivo")
+                    onClick = { isChangingKey = true },
+                    backgroundColor = customColor2
+                )
+                {
+                    Icon(Icons.Default.Lock,
+                        contentDescription = "Cambiar clave",
+                        tint = customColor)
                 }
                 FloatingActionButton(
                     onClick = {
                         exportFileToDownloads(context, "contactos.vcf")
-                    }
+                    },
+                    backgroundColor = customColor2
                 ) {
-                    Icon(Icons.Default.List, contentDescription = "Exportar VCF")
+                    Icon(Icons.Default.List,
+                        contentDescription = "Exportar VCF",
+                        tint = customColor)
                 }
             }
         }
@@ -250,6 +280,13 @@ fun ChangeKeyScreen(onSaveKey: (String) -> Unit) {
     var confirmKey by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
 
+    Image(
+        painter = painterResource(id = R.drawable.fondoapp2),
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        modifier = Modifier.fillMaxSize()
+    )
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -257,7 +294,9 @@ fun ChangeKeyScreen(onSaveKey: (String) -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("Ingrese la nueva clave", style = MaterialTheme.typography.h6)
+        Text("Ingrese la nueva clave",
+            style = MaterialTheme.typography.h3,
+            color = customColor)
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -266,12 +305,14 @@ fun ChangeKeyScreen(onSaveKey: (String) -> Unit) {
             onValueChange = { newKey = it },
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, MaterialTheme.colors.primary)
+                .border(1.dp, customColor2)
                 .padding(16.dp),
             visualTransformation = PasswordVisualTransformation(),
             decorationBox = { innerTextField ->
                 if (newKey.isEmpty()) {
-                    Text("Nueva clave", color = MaterialTheme.colors.onSurface.copy(alpha = 0.3f))
+                    Text("Nueva clave",
+                        color = customColor,
+                        )
                 }
                 innerTextField()
             }
@@ -284,12 +325,13 @@ fun ChangeKeyScreen(onSaveKey: (String) -> Unit) {
             onValueChange = { confirmKey = it },
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, MaterialTheme.colors.primary)
+                .border(1.dp, customColor2)
                 .padding(16.dp),
             visualTransformation = PasswordVisualTransformation(),
             decorationBox = { innerTextField ->
                 if (confirmKey.isEmpty()) {
-                    Text("Confirmar clave", color = MaterialTheme.colors.onSurface.copy(alpha = 0.3f))
+                    Text("Confirmar clave",
+                        color = customColor)
                 }
                 innerTextField()
             }
@@ -311,8 +353,15 @@ fun ChangeKeyScreen(onSaveKey: (String) -> Unit) {
             } else {
                 errorMessage = "Las claves no coinciden. Inténtalo de nuevo."
             }
-        }) {
-            Text("Guardar Clave")
+        },
+            colors = ButtonDefaults.buttonColors(backgroundColor = customColor2),
+                modifier = Modifier.padding(top = 16.dp)
+                .fillMaxWidth()
+                .height(70.dp),
+        )
+        {
+            Text("Guardar Clave",
+                color = customColor)
         }
     }
 }
@@ -324,6 +373,14 @@ fun LoginScreen(
     onLogin: () -> Unit,
     errorMessage: String
 ) {
+
+    Image(
+        painter = painterResource(id = R.drawable.fondoapp2),
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        modifier = Modifier.fillMaxSize()
+    )
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -331,21 +388,34 @@ fun LoginScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(text = "Pantalla de Administración", style = MaterialTheme.typography.h5)
+        Text(text = "Pantalla de Administración",
+            style = MaterialTheme.typography.h3,
+            color = customColor)
 
         Spacer(modifier = Modifier.height(16.dp))
 
         TextField(
             value = key,
             onValueChange = onKeyChange,
-            label = { Text("Clave de administrador") },
-            visualTransformation = PasswordVisualTransformation()
+            label = { Text("Clave de administrador",
+                color= customColor)},
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(1f)
+                .height(80.dp) // Aumenta la altura
         )
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        Button(onClick = onLogin, modifier = Modifier.padding(top = 16.dp)) {
-            Text("Ingresar")
+        Button(onClick = onLogin,
+            modifier = Modifier.padding(top = 16.dp)
+                .fillMaxWidth()
+                .height(70.dp),
+                colors = ButtonDefaults.buttonColors(backgroundColor = customColor2)
+        ) {
+            Text("Ingresar",
+                fontSize = 20.sp, // Increase the text size
+                fontWeight = FontWeight.Bold // Make the text bold
+                ,color = customColor)
         }
 
         if (errorMessage.isNotEmpty()) {
