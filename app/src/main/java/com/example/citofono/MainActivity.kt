@@ -19,10 +19,17 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
@@ -50,48 +57,71 @@ fun NumericKeyboard(onKeyClick: (String) -> Unit) {
     val letterKeys = listOf("A", "B", "C", "D")
 
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Teclado numérico
         numberKeys.chunked(3).forEach { rowKeys ->
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 rowKeys.forEach { key ->
                     Button(
                         onClick = { onKeyClick(key) },
-                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            backgroundColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(50),
                         modifier = Modifier
-                            .padding(8.dp)
-                            .size(110.dp)
+                            .width(150.dp)
+                            .height(100.dp)
+                            .shadow(elevation = 4.dp, shape = RoundedCornerShape(50))
                     ) {
-                        Text(text = key, style = MaterialTheme.typography.h4)
+                        Text(
+                            text = key,
+                            style = MaterialTheme.typography.h3,
+                            color = Color.Black
+                        )
                     }
                 }
             }
         }
 
+        // Teclas de letras
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 8.dp),
+                .padding(top = 16.dp),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
             letterKeys.forEach { key ->
                 Button(
                     onClick = { onKeyClick(key) },
-                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        backgroundColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(50),
                     modifier = Modifier
-                        .padding(8.dp)
-                        .size(100.dp)
+                        .width(130.dp)
+                        .height(100.dp)
+                        .shadow(elevation = 4.dp, shape = RoundedCornerShape(50))
                 ) {
-                    Text(text = key, style = MaterialTheme.typography.h4)
+                    Text(
+                        text = key,
+                        style = MaterialTheme.typography.h4,
+                        color = Color.Black
+                    )
                 }
             }
         }
     }
 }
+
 
 @Composable
 fun SearchScreen(
@@ -106,6 +136,7 @@ fun SearchScreen(
     var selectedPhoneIndex by remember { mutableStateOf(-1) }
     var departmentNotFound by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(departmentNotFound) {
         if (departmentNotFound) {
@@ -138,13 +169,15 @@ fun SearchScreen(
                 modifier = Modifier
                     .weight(1f)
                     .height(80.dp)
+                    .focusRequester(focusRequester)
+                    .focusProperties { canFocus = false }
             )
             Spacer(modifier = Modifier.width(8.dp))
             Button(
                 onClick = { searchQuery = "" },
                 modifier = Modifier.size(80.dp)
             ) {
-                Text(text = "Borrar")
+                Icon(Icons.Default.Delete, contentDescription = "Borrar")
             }
         }
 
@@ -162,7 +195,11 @@ fun SearchScreen(
                     if (firstContact.phoneNumber.isNotEmpty()) {
                         selectedPhoneNumbers = firstContact.phoneNumber
                         selectedDepartment = firstContact.department
-                        showDialog = true
+                        if (selectedPhoneNumbers.size > 1 && selectedPhoneNumbers[1].contains("-")) {
+                            onCallClick(selectedPhoneNumbers[0], selectedDepartment)
+                        } else {
+                            showDialog = true
+                        }
                         departmentNotFound = false
                     }
                 } else {
@@ -174,16 +211,16 @@ fun SearchScreen(
                 .fillMaxWidth()
                 .height(80.dp)
         ) {
-            Text(text = "Llamar")
+            Icon(Icons.Default.Phone, contentDescription = "Llamar")
         }
 
         if (showDialog) {
             AlertDialog(
                 onDismissRequest = { showDialog = false },
-                title = { Text("Seleccionar Teléfono") },
+                title = { Text("Seleccionar Teléfono",style = MaterialTheme.typography.h5) },
                 text = {
                     Column {
-                        Text("¿A qué número desea llamar?")
+                        Text("¿A qué número desea llamar?",style = MaterialTheme.typography.h5)
                         selectedPhoneNumbers.forEachIndexed { index, phone ->
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -202,7 +239,7 @@ fun SearchScreen(
                                         selectedPhoneNumber = phone
                                     }
                                 )
-                                Text(text = "Teléfono ${index + 1}")
+                                Text(text = "Teléfono ${index + 1}",style = MaterialTheme.typography.h5)
                             }
                         }
                     }
@@ -214,12 +251,12 @@ fun SearchScreen(
                             showDialog = false
                         }
                     ) {
-                        Text("Llamar")
+                        Text("Llamar", style = MaterialTheme.typography.h5)
                     }
                 },
                 dismissButton = {
                     Button(onClick = { showDialog = false }) {
-                        Text("Cancelar")
+                        Text("Cancelar", style = MaterialTheme.typography.h5)
                     }
                 }
             )

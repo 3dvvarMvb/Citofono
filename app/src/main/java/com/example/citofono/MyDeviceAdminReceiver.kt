@@ -39,4 +39,3 @@ class MyDeviceAdminReceiver : DeviceAdminReceiver() {
         Toast.makeText(context, "Saliendo de Kiosk Mode (Lock Task)", Toast.LENGTH_SHORT).show()
     }
 }
-a
