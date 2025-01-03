@@ -175,7 +175,10 @@ fun SearchScreen(
             Spacer(modifier = Modifier.width(8.dp))
             Button(
                 onClick = { searchQuery = "" },
-                modifier = Modifier.size(80.dp)
+                modifier = Modifier.size(80.dp),
+                colors = ButtonDefaults.buttonColors(
+                    backgroundColor = Color.Red
+                )
             ) {
                 Icon(Icons.Default.Delete, contentDescription = "Borrar")
             }
@@ -209,7 +212,8 @@ fun SearchScreen(
             modifier = Modifier
                 .padding(8.dp)
                 .fillMaxWidth()
-                .height(80.dp)
+                .height(80.dp),
+            colors = ButtonDefaults.buttonColors(backgroundColor = Color.Green)
         ) {
             Icon(Icons.Default.Phone, contentDescription = "Llamar")
         }
