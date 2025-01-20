@@ -126,9 +126,10 @@ fun NumericKeyboard(onKeyClick: (String) -> Unit) {
 @Composable
 fun SearchScreen(
     contacts: List<Contact>,
-    onCallClick: (String, String) -> Unit
+    onCallClick: (String, String) -> Unit,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit
 ) {
-    var searchQuery by remember { mutableStateOf("") }
     var showDialog by remember { mutableStateOf(false) }
     var selectedPhoneNumbers by remember { mutableStateOf(listOf<String>()) }
     var selectedDepartment by remember { mutableStateOf("") }
@@ -163,7 +164,7 @@ fun SearchScreen(
         ) {
             TextField(
                 value = searchQuery,
-                onValueChange = { searchQuery = it },
+                onValueChange = onSearchQueryChange,
                 label = { Text("Buscar Departamento") },
                 textStyle = MaterialTheme.typography.h4,
                 modifier = Modifier
@@ -174,7 +175,7 @@ fun SearchScreen(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Button(
-                onClick = { searchQuery = "" },
+                onClick = { onSearchQueryChange("") },
                 modifier = Modifier.size(80.dp),
                 colors = ButtonDefaults.buttonColors(
                     backgroundColor = Color.Red
@@ -186,24 +187,28 @@ fun SearchScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        NumericKeyboard(onKeyClick = { key -> searchQuery += key })
+        NumericKeyboard(onKeyClick = { key -> onSearchQueryChange(searchQuery + key) })
 
         Spacer(modifier = Modifier.height(16.dp))
 
         Button(
             onClick = {
-                val departmentContacts = contacts.filter { it.department.contains(searchQuery, ignoreCase = true) }
-                if (departmentContacts.isNotEmpty()) {
-                    val firstContact = departmentContacts.first()
-                    if (firstContact.phoneNumber.isNotEmpty()) {
-                        selectedPhoneNumbers = firstContact.phoneNumber
-                        selectedDepartment = firstContact.department
-                        if (selectedPhoneNumbers.size > 1 && selectedPhoneNumbers[1].contains("-")) {
-                            onCallClick(selectedPhoneNumbers[0], selectedDepartment)
-                        } else {
-                            showDialog = true
+                if (searchQuery.isNotBlank()) {
+                    val departmentContacts = contacts.filter { it.department.contains(searchQuery, ignoreCase = true) }
+                    if (departmentContacts.isNotEmpty()) {
+                        val firstContact = departmentContacts.first()
+                        if (firstContact.phoneNumber.isNotEmpty()) {
+                            selectedPhoneNumbers = firstContact.phoneNumber
+                            selectedDepartment = firstContact.department
+                            if (selectedPhoneNumbers.size > 1 && selectedPhoneNumbers[1].contains("-")) {
+                                onCallClick(selectedPhoneNumbers[0], selectedDepartment)
+                            } else {
+                                showDialog = true
+                            }
+                            departmentNotFound = false
                         }
-                        departmentNotFound = false
+                    } else {
+                        departmentNotFound = true
                     }
                 } else {
                     departmentNotFound = true
@@ -300,6 +305,7 @@ class MainActivity : ComponentActivity() {
     private val contacts = mutableStateListOf<Contact>()
     private lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
     private var pendingPhoneNumber: String? = null
+    private var searchQuery by mutableStateOf("")
 
     // BroadcastReceiver para actualizar contactos
     private val updateContactsReceiver = object : BroadcastReceiver() {
@@ -351,7 +357,9 @@ class MainActivity : ComponentActivity() {
                     Column(modifier = Modifier.fillMaxSize()) {
                         SearchScreen(
                             contacts = contacts,
-                            onCallClick = { phoneNumber, department -> makeCall(phoneNumber) }
+                            onCallClick = { phoneNumber, department -> makeCall(phoneNumber) },
+                            searchQuery = searchQuery,
+                            onSearchQueryChange = { searchQuery = it }
                         )
                     }
 
@@ -388,6 +396,11 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         unregisterReceiver(updateContactsReceiver)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        searchQuery = ""
     }
 
     // ---------------------------------------------
