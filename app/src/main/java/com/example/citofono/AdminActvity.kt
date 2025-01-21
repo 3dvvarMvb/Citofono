@@ -25,13 +25,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -45,15 +43,12 @@ import org.apache.poi.ss.usermodel.*
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.io.*
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.graphics.Color
 
 val customColor = Color(red = 250, green = 244, blue = 226, alpha = 255)
 val customColor2 = Color(red = 192, green = 76, blue = 54, alpha = 255)
 
 class AdminActivity : ComponentActivity() {
-
-
     companion object {
         private const val REQUEST_WRITE_CONTACTS_PERMISSION = 1
     }
@@ -522,6 +517,9 @@ fun updateContactsAfterUpload(context: Context) {
     }
 
     try {
+        // Eliminar todos los contactos antes de actualizar
+        deleteAllContacts(context)
+
         val contacts = mutableListOf<Contact>()
         csvFile.bufferedReader().useLines { lines ->
             lines.forEach { line ->
@@ -614,5 +612,25 @@ fun checkAndRequestWriteContactsPermission(activity: Activity, onPermissionGrant
         )
     } else {
         onPermissionGranted()
+    }
+}
+
+private fun deleteAllContacts(context: Context) {
+    val resolver: ContentResolver = context.contentResolver
+    val uri = ContactsContract.RawContacts.CONTENT_URI
+
+    try {
+        val rowsDeleted = resolver.delete(uri, null, null)
+        if (rowsDeleted > 0) {
+            Toast.makeText(context, "Actualizacion de contactos en proceso", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, "No hay contactos para eliminar", Toast.LENGTH_SHORT).show()
+        }
+    } catch (e: SecurityException) {
+        e.printStackTrace()
+        Toast.makeText(context, "Error al eliminar contactos", Toast.LENGTH_SHORT).show()
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Toast.makeText(context, "Error desconocido", Toast.LENGTH_SHORT).show()
     }
 }
