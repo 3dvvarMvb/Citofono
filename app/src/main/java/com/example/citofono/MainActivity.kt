@@ -2,7 +2,9 @@ package com.example.citofono
 
 import android.content.Context
 import android.Manifest
+import android.app.admin.DevicePolicyManager
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
@@ -38,7 +40,7 @@ import java.io.BufferedReader
 import java.io.File
 import java.io.FileInputStream
 import java.io.InputStreamReader
-
+import android.util.Log
 data class Contact(
     val id: Int,
     val name: String,
@@ -333,6 +335,9 @@ class MainActivity : ComponentActivity() {
         // ADDED: Configurar la whitelist del modo kiosk (Lock Task) con el dialer
         configureLockTaskPackages()
 
+        // ADDED: Configurar las características del modo kiosk (Lock Task)
+        setLockTaskFeatures()
+
         // Iniciar Lock Task Mode (Kiosk) al crear la actividad
         startKioskMode()
 
@@ -403,6 +408,18 @@ class MainActivity : ComponentActivity() {
         searchQuery = ""
     }
 
+    private fun setLockTaskFeatures() {
+        val context = applicationContext
+        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+        dpm.setLockTaskFeatures(
+            adminComponentName,
+            DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS or
+                    DevicePolicyManager.LOCK_TASK_FEATURE_HOME or
+                    DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS or
+                    DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO
+        )
+    }
+
     // ---------------------------------------------
     // ADDED: configurar la whitelist para modo kiosk
     // ---------------------------------------------
@@ -415,9 +432,12 @@ class MainActivity : ComponentActivity() {
                     packageName,
                     "com.android.dialer",
                     "com.google.android.dialer",
-                    "com.android.incallui"// Ajusta según tu dispositivo
+                    "com.android.incallui",
+                    "com.android.dialer.DialtactsActivity"// Ajusta según tu dispositivo
                 )
             )
+
+
         } catch (e: SecurityException) {
             e.printStackTrace()
             Toast.makeText(
@@ -427,7 +447,6 @@ class MainActivity : ComponentActivity() {
             ).show()
         }
     }
-    // ---------------------------------------------
 
     // ---------------------------------------------
     // Modo Kiosk (Lock Task): iniciar y detener
