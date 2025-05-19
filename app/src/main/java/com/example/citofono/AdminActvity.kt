@@ -1,5 +1,4 @@
 @file:Suppress("DEPRECATION")
-
 package com.example.citofono
 
 import android.app.Activity
@@ -48,6 +47,12 @@ import androidx.compose.ui.graphics.Color
 val customColor = Color(red = 250, green = 244, blue = 226, alpha = 255)
 val customColor2 = Color(red = 192, green = 76, blue = 54, alpha = 255)
 
+/**
+ * Actividad principal de la aplicación que gestiona la pantalla de administración.
+ *
+ * Esta actividad permite al usuario iniciar sesión como administrador, cambiar la clave de administrador,
+ * subir archivos de contactos y gestionar el modo Kiosk.
+ */
 class AdminActivity : ComponentActivity() {
     companion object {
         private const val REQUEST_WRITE_CONTACTS_PERMISSION = 1
@@ -89,6 +94,20 @@ class AdminActivity : ComponentActivity() {
     }
 }
 
+/**
+ * Composable que muestra la pantalla de administración para gestionar contactos y el modo Kiosk.
+ *
+ * Permite:
+ * - Iniciar sesión con clave de administrador.
+ * - Cambiar la clave de administrador.
+ * - Subir y convertir archivos de contactos (.csv o .xlsx).
+ * - Actualizar los contactos del sistema y generar un archivo VCF.
+ * - Exportar el archivo VCF a la carpeta de descargas.
+ * - Salir del modo Kiosk.
+ *
+ * @param adminActivity Instancia de la actividad de administración.
+ * @param onExitKioskClick Acción a ejecutar al salir del modo Kiosk.
+ */
 @Composable
 fun AdminScreen(adminActivity: AdminActivity, onExitKioskClick: () -> Unit) {
     val context = LocalContext.current
@@ -263,6 +282,13 @@ fun AdminScreen(adminActivity: AdminActivity, onExitKioskClick: () -> Unit) {
     }
 }
 
+/**
+ * Composable que muestra la pantalla para cambiar la clave de administrador.
+ *
+ * Permite al usuario ingresar una nueva clave y confirmarla.
+ *
+ * @param onSaveKey Acción a ejecutar al guardar la nueva clave.
+ */
 @Composable
 fun ChangeKeyScreen(onSaveKey: (String) -> Unit) {
     var newKey by remember { mutableStateOf("") }
@@ -355,6 +381,16 @@ fun ChangeKeyScreen(onSaveKey: (String) -> Unit) {
     }
 }
 
+/**
+ * Composable que muestra la pantalla de inicio de sesión para el administrador.
+ *
+ * Permite al usuario ingresar la clave de administrador y acceder a las funciones de administración.
+ *
+ * @param key Clave ingresada por el usuario.
+ * @param onKeyChange Acción a ejecutar al cambiar la clave.
+ * @param onLogin Acción a ejecutar al iniciar sesión.
+ * @param errorMessage Mensaje de error a mostrar si la clave es incorrecta.
+ */
 @Composable
 fun LoginScreen(
     key: String,
@@ -417,6 +453,13 @@ fun LoginScreen(
     }
 }
 
+/**
+ * Función que obtiene la extensión de un archivo a partir de su URI.
+ *
+ * @param context Contexto de la aplicación.
+ * @param uri URI del archivo.
+ * @return Extensión del archivo en minúsculas.
+ */
 fun getFileExtension(context: Context, uri: Uri): String {
     var extension = ""
 
@@ -431,6 +474,12 @@ fun getFileExtension(context: Context, uri: Uri): String {
     return extension.lowercase()
 }
 
+/**
+ * Función que convierte un archivo Excel (.xlsx) a CSV.
+ *
+ * @param inputStream InputStream del archivo Excel.
+ * @param outputFile Archivo de salida en formato CSV.
+ */
 fun convertExcelToCsv(inputStream: InputStream, outputFile: File) {
     try {
         val workbook: Workbook = XSSFWorkbook(inputStream)
@@ -473,6 +522,13 @@ fun convertExcelToCsv(inputStream: InputStream, outputFile: File) {
     }
 }
 
+/**
+ * Función que guarda un archivo en el almacenamiento interno de la aplicación.
+ *
+ * @param context Contexto de la aplicación.
+ * @param uri URI del archivo a guardar.
+ * @param fileName Nombre del archivo a guardar.
+ */
 fun saveFileToInternalStorage(context: Context, uri: Uri, fileName: String) {
     val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
     val outputFile = File(context.filesDir, fileName)
@@ -485,6 +541,12 @@ fun saveFileToInternalStorage(context: Context, uri: Uri, fileName: String) {
     }
 }
 
+/**
+ * Función que exporta un archivo a la carpeta de descargas del dispositivo.
+ *
+ * @param context Contexto de la aplicación.
+ * @param fileName Nombre del archivo a exportar.
+ */
 fun exportFileToDownloads(context: Context, fileName: String) {
     val inputFile = File(context.filesDir, fileName)
     val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
@@ -503,6 +565,11 @@ fun exportFileToDownloads(context: Context, fileName: String) {
     }
 }
 
+/**
+ * Función que actualiza los contactos del sistema a partir de un archivo CSV.
+ *
+ * @param context Contexto de la aplicación.
+ */
 fun updateContactsAfterUpload(context: Context) {
     val csvFile = File(context.filesDir, "contactos.csv")
     if (!csvFile.exists()) {
@@ -540,6 +607,15 @@ fun updateContactsAfterUpload(context: Context) {
     }
 }
 
+/**
+ * Genera un archivo VCF (vCard) con la lista de contactos proporcionada.
+ *
+ * Cada contacto se agrega como una entrada VCARD con su nombre y todos sus números de teléfono.
+ * El archivo se guarda en el almacenamiento interno de la aplicación con el nombre 'contactos.vcf'.
+ *
+ * @param context Contexto de la aplicación.
+ * @param contacts Lista de contactos a exportar en formato VCF.
+ */
 fun generateVcfFile(context: Context, contacts: List<Contact>) {
     val vcfFile = File(context.filesDir, "contactos.vcf")
     try {
@@ -560,6 +636,16 @@ fun generateVcfFile(context: Context, contacts: List<Contact>) {
     }
 }
 
+/**
+ * Agrega un contacto al teléfono con el nombre y los números de teléfono proporcionados.
+ *
+ * Inserta un nuevo contacto en la base de datos de contactos del dispositivo, asignando el nombre y todos los números de teléfono indicados.
+ * Si ocurre algún error durante el proceso, muestra un mensaje de error mediante un Toast.
+ *
+ * @param name Nombre del contacto.
+ * @param phoneNumbers Lista de números de teléfono asociados al contacto.
+ * @param context Contexto de la aplicación.
+ */
 private fun addContactToPhone(name: String, phoneNumbers: List<String>, context: Context) {
     val contentResolver = context.contentResolver
 
@@ -591,12 +677,23 @@ private fun addContactToPhone(name: String, phoneNumbers: List<String>, context:
     }
 }
 
+/**
+ * Función que limpia un número de teléfono eliminando caracteres no deseados.
+ *
+ * @param phoneNumber Número de teléfono a limpiar.
+ * @return Número de teléfono limpio.
+ */
 private fun cleanPhoneNumber(phoneNumber: String): String {
     return phoneNumber.replace("[^+\\d]".toRegex(), "")
 }
 
+/**
+ * Función que verifica y solicita el permiso para escribir contactos.
+ *
+ * @param activity Actividad desde la cual se solicita el permiso.
+ * @param onPermissionGranted Acción a ejecutar si el permiso es otorgado.
+ */
 private const val REQUEST_WRITE_CONTACTS_PERMISSION = 1
-
 fun checkAndRequestWriteContactsPermission(activity: Activity, onPermissionGranted: () -> Unit) {
     if (ContextCompat.checkSelfPermission(activity, android.Manifest.permission.WRITE_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
         ActivityCompat.requestPermissions(
@@ -609,6 +706,11 @@ fun checkAndRequestWriteContactsPermission(activity: Activity, onPermissionGrant
     }
 }
 
+/**
+ * Función que elimina todos los contactos del dispositivo.
+ *
+ * @param context Contexto de la aplicación.
+ */
 private fun deleteAllContacts(context: Context) {
     val resolver: ContentResolver = context.contentResolver
     val uri = ContactsContract.RawContacts.CONTENT_URI

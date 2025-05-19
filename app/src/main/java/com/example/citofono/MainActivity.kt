@@ -49,6 +49,17 @@ data class Contact(
     val department: String
 )
 
+/**
+ * Composable que muestra un teclado numérico personalizado con botones grandes.
+ *
+ * @param onKeyClick Función lambda que se invoca cuando se presiona una tecla, recibiendo el valor de la tecla presionada.
+ *
+ * El teclado incluye:
+ * - Números del 0 al 9, distribuidos en filas de 3 columnas.
+ * - Letras A, B, C y D en una fila separada.
+ * - Cada botón tiene un diseño redondeado, sombra y colores personalizados.
+ * - Al presionar cualquier botón, se llama a `onKeyClick` con el valor correspondiente.
+ */
 @Composable
 fun NumericKeyboard(onKeyClick: (String) -> Unit) {
     val numberKeys = listOf(
@@ -122,6 +133,21 @@ fun NumericKeyboard(onKeyClick: (String) -> Unit) {
     }
 }
 
+/**
+ * Pantalla de búsqueda de departamentos y selección de teléfonos para llamar.
+ *
+ * @param contacts Lista de contactos disponibles.
+ * @param onCallClick Función lambda que se invoca al seleccionar un número para llamar. Recibe el número y el departamento.
+ * @param searchQuery Texto actual de búsqueda ingresado por el usuario.
+ * @param onSearchQueryChange Función lambda que se invoca cuando cambia el texto de búsqueda.
+ *
+ * Características:
+ * - Permite buscar departamentos por nombre.
+ * - Muestra un teclado numérico personalizado para ingresar la búsqueda.
+ * - Si el departamento existe y tiene varios teléfonos, muestra un diálogo para seleccionar cuál llamar.
+ * - Muestra un Snackbar si el departamento no se encuentra.
+ * - Permite limpiar la búsqueda y reiniciar el campo.
+ */
 @Composable
 fun SearchScreen(
     contacts: List<Contact>,
@@ -274,6 +300,12 @@ fun SearchScreen(
     }
 }
 
+/**
+ * Carga los contactos desde un archivo CSV ubicado en el directorio de archivos internos de la aplicación.
+ *
+ * @param context Contexto de la aplicación.
+ * @return Lista de contactos cargados desde el archivo CSV.
+ */
 fun loadContactsFromCsv(context: Context): List<Contact> {
     val contacts = mutableListOf<Contact>()
 
@@ -301,6 +333,12 @@ fun loadContactsFromCsv(context: Context): List<Contact> {
     return contacts
 }
 
+/**
+ * Actividad principal de la aplicación.
+ *
+ * Esta actividad se encarga de gestionar la interfaz de usuario y la lógica de negocio relacionada con los contactos.
+ * También maneja el modo quiosco y las llamadas telefónicas.
+ */
 class MainActivity : ComponentActivity() {
 
     private val contacts = mutableStateListOf<Contact>()
