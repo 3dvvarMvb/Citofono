@@ -1,8 +1,8 @@
+@file:Suppress("DEPRECATION")
+
 package com.example.citofono
 
 import android.app.Activity
-import android.app.admin.DevicePolicyManager
-import android.content.ComponentName
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.ContentValues
@@ -53,13 +53,6 @@ class AdminActivity : ComponentActivity() {
         private const val REQUEST_WRITE_CONTACTS_PERMISSION = 1
     }
 
-    private val devicePolicyManager by lazy {
-        getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-    }
-    private val adminComponentName by lazy {
-        ComponentName(this, MyDeviceAdminReceiver::class.java)
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -78,6 +71,7 @@ class AdminActivity : ComponentActivity() {
         }
     }
 
+    @Deprecated("This method has been deprecated in favor of using the Activity Result API\n      which brings increased type safety via an {@link ActivityResultContract} and the prebuilt\n      contracts for common intents available in\n      {@link androidx.activity.result.contract.ActivityResultContracts}, provides hooks for\n      testing, and allow receiving results in separate, testable classes independent from your\n      activity. Use\n      {@link #registerForActivityResult(ActivityResultContract, ActivityResultCallback)} passing\n      in a {@link RequestMultiplePermissions} object for the {@link ActivityResultContract} and\n      handling the result in the {@link ActivityResultCallback#onActivityResult(Object) callback}.")
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<String>,
@@ -601,7 +595,7 @@ private fun cleanPhoneNumber(phoneNumber: String): String {
     return phoneNumber.replace("[^+\\d]".toRegex(), "")
 }
 
-private val REQUEST_WRITE_CONTACTS_PERMISSION = 1
+private const val REQUEST_WRITE_CONTACTS_PERMISSION = 1
 
 fun checkAndRequestWriteContactsPermission(activity: Activity, onPermissionGranted: () -> Unit) {
     if (ContextCompat.checkSelfPermission(activity, android.Manifest.permission.WRITE_CONTACTS) != PackageManager.PERMISSION_GRANTED) {

@@ -2,20 +2,20 @@ package com.example.citofono
 
 import android.content.Context
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.admin.DevicePolicyManager
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.result.registerForActivityResult
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,7 +40,8 @@ import java.io.BufferedReader
 import java.io.File
 import java.io.FileInputStream
 import java.io.InputStreamReader
-import android.util.Log
+import androidx.core.net.toUri
+
 data class Contact(
     val id: Int,
     val name: String,
@@ -57,14 +58,12 @@ fun NumericKeyboard(onKeyClick: (String) -> Unit) {
         "0"
     )
     val letterKeys = listOf("A", "B", "C", "D")
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Teclado numérico
         numberKeys.chunked(3).forEach { rowKeys ->
             Row(
                 modifier = Modifier
@@ -94,7 +93,6 @@ fun NumericKeyboard(onKeyClick: (String) -> Unit) {
             }
         }
 
-        // Teclas de letras
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -124,7 +122,6 @@ fun NumericKeyboard(onKeyClick: (String) -> Unit) {
     }
 }
 
-
 @Composable
 fun SearchScreen(
     contacts: List<Contact>,
@@ -136,7 +133,7 @@ fun SearchScreen(
     var selectedPhoneNumbers by remember { mutableStateOf(listOf<String>()) }
     var selectedDepartment by remember { mutableStateOf("") }
     var selectedPhoneNumber by remember { mutableStateOf("") }
-    var selectedPhoneIndex by remember { mutableStateOf(-1) }
+    var selectedPhoneIndex by remember { mutableIntStateOf(-1) }
     var departmentNotFound by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val focusRequester = remember { FocusRequester() }
@@ -250,7 +247,7 @@ fun SearchScreen(
                                         selectedPhoneNumber = phone
                                     }
                                 )
-                                Text(text = "Teléfono ${index + 1}",style = MaterialTheme.typography.h5)
+                                Text(text = "Teléfono ${index + 1}", style = MaterialTheme.typography.h5)
                             }
                         }
                     }
@@ -260,6 +257,8 @@ fun SearchScreen(
                         onClick = {
                             onCallClick(selectedPhoneNumber, selectedDepartment)
                             showDialog = false
+                            selectedPhoneNumber = ""
+                            selectedPhoneIndex = -1
                         }
                     ) {
                         Text("Llamar", style = MaterialTheme.typography.h5)
@@ -309,7 +308,6 @@ class MainActivity : ComponentActivity() {
     private var pendingPhoneNumber: String? = null
     private var searchQuery by mutableStateOf("")
 
-    // BroadcastReceiver para actualizar contactos
     private val updateContactsReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             contacts.clear()
@@ -318,27 +316,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // ---------------------------------------------
-    // ADDED: Referencias para DevicePolicyManager
-    // ---------------------------------------------
     private val devicePolicyManager by lazy {
-        getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+        getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
     }
     private val adminComponentName by lazy {
-        android.content.ComponentName(this, MyDeviceAdminReceiver::class.java)
+        ComponentName(this, MyDeviceAdminReceiver::class.java)
     }
-    // ---------------------------------------------
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // ADDED: Configurar la whitelist del modo kiosk (Lock Task) con el dialer
         configureLockTaskPackages()
-
-        // ADDED: Configurar las características del modo kiosk (Lock Task)
         setLockTaskFeatures()
-
-        // Iniciar Lock Task Mode (Kiosk) al crear la actividad
         startKioskMode()
 
         requestPermissionLauncher = registerForActivityResult(
@@ -352,7 +341,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Cargar contactos al iniciar la app
         contacts.addAll(loadContactsFromCsv(this))
 
         setContent {
@@ -362,18 +350,17 @@ class MainActivity : ComponentActivity() {
                     Column(modifier = Modifier.fillMaxSize()) {
                         SearchScreen(
                             contacts = contacts,
-                            onCallClick = { phoneNumber, department -> makeCall(phoneNumber) },
+                            onCallClick = { phoneNumber, _ ->
+                                makeCall(phoneNumber)
+                                // Reinicia el query después de llamar
+                                searchQuery = ""
+                            },
                             searchQuery = searchQuery,
                             onSearchQueryChange = { searchQuery = it }
                         )
                     }
-
                     FloatingActionButton(
                         onClick = {
-                            // Aquí podrías crear un método para salir del kiosk
-                            // llamando a stopKioskMode() si gustas:
-                            // stopKioskMode()
-                            // O simplemente abrir AdminActivity:
                             val intent = Intent(context, AdminActivity::class.java)
                             context.startActivity(intent)
                         },
@@ -388,12 +375,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @SuppressLint("UnspecifiedRegisterReceiverFlag")
     override fun onStart() {
         super.onStart()
         val filter = IntentFilter("com.example.citofono.UPDATE_CONTACTS")
-        registerReceiver(updateContactsReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-
-        // Actualizar contactos al iniciar la actividad
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(updateContactsReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(updateContactsReceiver, filter)
+        }
         contacts.clear()
         contacts.addAll(loadContactsFromCsv(this))
     }
@@ -409,23 +399,21 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun setLockTaskFeatures() {
-        val context = applicationContext
-        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-        dpm.setLockTaskFeatures(
-            adminComponentName,
-            DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS or
-                    DevicePolicyManager.LOCK_TASK_FEATURE_HOME or
-                    DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS or
-                    DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO
-        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val context = applicationContext
+            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            dpm.setLockTaskFeatures(
+                adminComponentName,
+                DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS or
+                        DevicePolicyManager.LOCK_TASK_FEATURE_HOME or
+                        DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS or
+                        DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO
+            )
+        }
     }
 
-    // ---------------------------------------------
-    // ADDED: configurar la whitelist para modo kiosk
-    // ---------------------------------------------
     private fun configureLockTaskPackages() {
         try {
-            // El dialer varía según el dispositivo: "com.android.dialer", "com.google.android.dialer", etc.
             devicePolicyManager.setLockTaskPackages(
                 adminComponentName,
                 arrayOf(
@@ -433,11 +421,9 @@ class MainActivity : ComponentActivity() {
                     "com.android.dialer",
                     "com.google.android.dialer",
                     "com.android.incallui",
-                    "com.android.dialer.DialtactsActivity"// Ajusta según tu dispositivo
+                    "com.android.dialer.DialtactsActivity"
                 )
             )
-
-
         } catch (e: SecurityException) {
             e.printStackTrace()
             Toast.makeText(
@@ -448,9 +434,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // ---------------------------------------------
-    // Modo Kiosk (Lock Task): iniciar y detener
-    // ---------------------------------------------
     private fun startKioskMode() {
         try {
             startLockTask()
@@ -459,23 +442,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun stopKioskMode() {
-        try {
-            stopLockTask()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    // ---------------------------------------------
-    // Lógica para realizar llamadas telefónicas
-    // ---------------------------------------------
     private fun makeCall(phoneNumber: String) {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE)
             == PackageManager.PERMISSION_GRANTED
         ) {
             val intent = Intent(Intent.ACTION_CALL).apply {
-                data = Uri.parse("tel:" + validatePhoneNumber(phoneNumber))
+                data = ("tel:" + validatePhoneNumber(phoneNumber)).toUri()
             }
             startActivity(intent)
         } else {
@@ -488,4 +460,3 @@ class MainActivity : ComponentActivity() {
         return if (phoneNumber.startsWith("+")) phoneNumber else "+56$phoneNumber"
     }
 }
-//martuko puto
