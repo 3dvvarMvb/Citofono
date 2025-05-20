@@ -33,6 +33,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import com.example.citofono.ui.theme.CitofonoTheme
@@ -65,33 +66,33 @@ fun NumericKeyboard(onKeyClick: (String) -> Unit) {
     val numberKeys = listOf(
         "1", "2", "3",
         "4", "5", "6",
-        "7", "8", "9",
-        "0"
+        "7", "8", "9"
     )
     val letterKeys = listOf("A", "B", "C", "D")
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .fillMaxHeight()
             .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
-        numberKeys.chunked(3).forEach { rowKeys ->
+        val numberRows = numberKeys.chunked(3)
+        numberRows.forEach { rowKeys ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
+                    .weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 rowKeys.forEach { key ->
                     Button(
                         onClick = { onKeyClick(key) },
-                        colors = ButtonDefaults.buttonColors(
-                            backgroundColor = Color.White
-                        ),
+                        colors = ButtonDefaults.buttonColors(backgroundColor = Color.White),
                         shape = RoundedCornerShape(50),
                         modifier = Modifier
-                            .width(150.dp)
-                            .height(100.dp)
+                            .weight(1f)
+                            .fillMaxHeight()
                             .shadow(elevation = 4.dp, shape = RoundedCornerShape(50))
                     ) {
                         Text(
@@ -103,23 +104,45 @@ fun NumericKeyboard(onKeyClick: (String) -> Unit) {
                 }
             }
         }
-
+        // Fila especial para el "0" centrado
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 16.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
+                .weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Spacer(modifier = Modifier.weight(1f))
+            Button(
+                onClick = { onKeyClick("0") },
+                colors = ButtonDefaults.buttonColors(backgroundColor = Color.White),
+                shape = RoundedCornerShape(50),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .shadow(elevation = 4.dp, shape = RoundedCornerShape(50))
+            ) {
+                Text(
+                    text = "0",
+                    style = MaterialTheme.typography.h3,
+                    color = Color.Black
+                )
+            }
+            Spacer(modifier = Modifier.weight(1f))
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             letterKeys.forEach { key ->
                 Button(
                     onClick = { onKeyClick(key) },
-                    colors = ButtonDefaults.buttonColors(
-                        backgroundColor = Color.White
-                    ),
+                    colors = ButtonDefaults.buttonColors(backgroundColor = Color.White),
                     shape = RoundedCornerShape(50),
                     modifier = Modifier
-                        .width(130.dp)
-                        .height(100.dp)
+                        .weight(1f)
+                        .fillMaxHeight()
                         .shadow(elevation = 4.dp, shape = RoundedCornerShape(50))
                 ) {
                     Text(
@@ -132,7 +155,18 @@ fun NumericKeyboard(onKeyClick: (String) -> Unit) {
         }
     }
 }
-
+@Composable
+fun ResponsiveKeyboardBox(onKeyClick: (String) -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .fillMaxHeight(0.8f)
+            .wrapContentHeight()
+            .padding(8.dp)
+    ) {
+        NumericKeyboard(onKeyClick = onKeyClick)
+    }
+}
 /**
  * Pantalla de búsqueda de departamentos y selección de teléfonos para llamar.
  *
@@ -212,7 +246,7 @@ fun SearchScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        NumericKeyboard(onKeyClick = { key -> onSearchQueryChange(searchQuery + key) })
+        ResponsiveKeyboardBox(onKeyClick = { key -> onSearchQueryChange(searchQuery + key) })
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -355,7 +389,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private val devicePolicyManager by lazy {
-        getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+        getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager
     }
     private val adminComponentName by lazy {
         ComponentName(this, MyDeviceAdminReceiver::class.java)
@@ -418,7 +452,7 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         val filter = IntentFilter("com.example.citofono.UPDATE_CONTACTS")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(updateContactsReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            registerReceiver(updateContactsReceiver, filter, RECEIVER_NOT_EXPORTED)
         } else {
             registerReceiver(updateContactsReceiver, filter)
         }
@@ -439,7 +473,7 @@ class MainActivity : ComponentActivity() {
     private fun setLockTaskFeatures() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             val context = applicationContext
-            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            val dpm = context.getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager
             dpm.setLockTaskFeatures(
                 adminComponentName,
                 DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS or
@@ -496,5 +530,33 @@ class MainActivity : ComponentActivity() {
 
     private fun validatePhoneNumber(phoneNumber: String): String {
         return if (phoneNumber.startsWith("+")) phoneNumber else "+56$phoneNumber"
+    }
+}
+
+// Preview para NumericKeyboard
+@Preview(showBackground = true, name = "NumericKeyboard Preview")
+@Composable
+fun PreviewNumericKeyboard() {
+    CitofonoTheme {
+        NumericKeyboard(onKeyClick = {})
+    }
+}
+
+// Preview para SearchScreen
+@Preview(showBackground = true, name = "SearchScreen Preview")
+@Composable
+fun PreviewSearchScreen() {
+    val sampleContacts = listOf(
+        Contact(1, "Juan", listOf("123456789", "987654321"), "Depto A"),
+        Contact(2, "Ana", listOf("555555555"), "Depto B")
+    )
+    var searchQuery by remember { mutableStateOf("") }
+    CitofonoTheme {
+        SearchScreen(
+            contacts = sampleContacts,
+            onCallClick = { _, _ -> },
+            searchQuery = searchQuery,
+            onSearchQueryChange = { searchQuery = it }
+        )
     }
 }
