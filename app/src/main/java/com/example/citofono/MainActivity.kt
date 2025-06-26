@@ -251,9 +251,16 @@ fun SearchScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         Button(
+
             onClick = {
                 if (searchQuery.isNotBlank()) {
-                    val departmentContacts = contacts.filter { it.department.contains(searchQuery, ignoreCase = true) }
+                    val exactMatches = contacts.filter { it.department.equals(searchQuery, ignoreCase = true) }
+                    val departmentContacts = if (exactMatches.isNotEmpty()) {
+                        exactMatches
+                    } else {
+                        contacts.filter { it.department.contains(searchQuery, ignoreCase = true) }
+                    }
+
                     if (departmentContacts.isNotEmpty()) {
                         val firstContact = departmentContacts.first()
                         if (firstContact.phoneNumber.isNotEmpty()) {
@@ -273,6 +280,7 @@ fun SearchScreen(
                     departmentNotFound = true
                 }
             },
+
             modifier = Modifier
                 .padding(8.dp)
                 .fillMaxWidth()
