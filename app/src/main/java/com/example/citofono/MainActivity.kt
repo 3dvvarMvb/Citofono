@@ -258,7 +258,7 @@ fun SearchScreen(
                     val departmentContacts = if (exactMatches.isNotEmpty()) {
                         exactMatches
                     } else {
-                        contacts.filter { it.department.contains(searchQuery, ignoreCase = true) }
+                        contacts.filter { it.department.startsWith(searchQuery, ignoreCase = true) }
                     }
 
                     if (departmentContacts.isNotEmpty()) {
