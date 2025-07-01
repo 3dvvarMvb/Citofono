@@ -640,6 +640,7 @@ fun generateVcfFile(context: Context, contacts: List<Contact>) {
  * Agrega un contacto al teléfono con el nombre y los números de teléfono proporcionados.
  *
  * Inserta un nuevo contacto en la base de datos de contactos del dispositivo, asignando el nombre y todos los números de teléfono indicados.
+ * Cada número se guarda en dos formatos: sin prefijo y con prefijo +56.
  * Si ocurre algún error durante el proceso, muestra un mensaje de error mediante un Toast.
  *
  * @param name Nombre del contacto.
@@ -662,14 +663,26 @@ private fun addContactToPhone(name: String, phoneNumbers: List<String>, context:
         contentResolver.insert(ContactsContract.Data.CONTENT_URI, nameValues)
 
         phoneNumbers.forEach { number ->
-            val cleanedNumber = cleanPhoneNumber(number)
-            val phoneValues = ContentValues().apply {
+            val cleanedNumber = cleanPhoneNumberWithoutPrefix(number)
+            val numberwithPrefix = "+56$cleanedNumber"
+
+            // Agregar número sin prefijo
+            val phoneValuesLocal = ContentValues().apply {
                 put(ContactsContract.Data.RAW_CONTACT_ID, rawContactId)
                 put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
                 put(ContactsContract.CommonDataKinds.Phone.NUMBER, cleanedNumber)
                 put(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
             }
-            contentResolver.insert(ContactsContract.Data.CONTENT_URI, phoneValues)
+            contentResolver.insert(ContactsContract.Data.CONTENT_URI, phoneValuesLocal)
+
+            // Agregar número con prefijo +56
+            val phoneValuesInternational = ContentValues().apply {
+                put(ContactsContract.Data.RAW_CONTACT_ID, rawContactId)
+                put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
+                put(ContactsContract.CommonDataKinds.Phone.NUMBER, numberwithPrefix)
+                put(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
+            }
+            contentResolver.insert(ContactsContract.Data.CONTENT_URI, phoneValuesInternational)
         }
     } catch (e: Exception) {
         e.printStackTrace()
@@ -678,13 +691,47 @@ private fun addContactToPhone(name: String, phoneNumbers: List<String>, context:
 }
 
 /**
- * Función que limpia un número de teléfono eliminando caracteres no deseados.
+ * Función que limpia un número de teléfono eliminando caracteres no deseados y agrega el prefijo +56.
  *
  * @param phoneNumber Número de teléfono a limpiar.
- * @return Número de teléfono limpio.
+ * @return Número de teléfono limpio con prefijo +56.
  */
 private fun cleanPhoneNumber(phoneNumber: String): String {
-    return phoneNumber.replace("[^+\\d]".toRegex(), "")
+    // Primero limpiamos el número eliminando todos los caracteres que no sean dígitos o el símbolo +
+    val cleanedNumber = phoneNumber.replace("[^+\\d]".toRegex(), "")
+
+    // Si el número ya tiene el prefijo +56, lo devolvemos tal como está
+    if (cleanedNumber.startsWith("+56")) {
+        return cleanedNumber
+    }
+
+    // Si el número tiene el prefijo +, pero no es +56, reemplazamos el prefijo
+    if (cleanedNumber.startsWith("+")) {
+        val numberWithoutPrefix = cleanedNumber.substring(cleanedNumber.indexOfFirst { it.isDigit() })
+        return "+56$numberWithoutPrefix"
+    }
+
+    // Si el número no tiene prefijo, agregamos +56
+    return "+56$cleanedNumber"
+}
+
+/**
+ * Función que limpia un número de teléfono eliminando caracteres no deseados sin agregar prefijo.
+ *
+ * @param phoneNumber Número de teléfono a limpiar.
+ * @return Número de teléfono limpio sin prefijo.
+ */
+private fun cleanPhoneNumberWithoutPrefix(phoneNumber: String): String {
+    // Limpiamos el número eliminando todos los caracteres que no sean dígitos
+    var cleanedNumber = phoneNumber.replace("[^\\d]".toRegex(), "")
+
+    // Si el número original tenía prefijo +56, lo removemos
+    val originalCleaned = phoneNumber.replace("[^+\\d]".toRegex(), "")
+    if (originalCleaned.startsWith("+56")) {
+        cleanedNumber = originalCleaned.substring(3) // Removemos +56
+    }
+
+    return cleanedNumber
 }
 
 /**
