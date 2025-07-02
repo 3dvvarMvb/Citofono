@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.runtime.*
@@ -250,6 +251,23 @@ fun AdminScreen(adminActivity: AdminActivity, onExitKioskClick: () -> Unit) {
                         fontWeight = FontWeight.Bold,
                         color = customColor)
                 }
+            }
+
+            // Botón de volver en la esquina superior izquierda
+            FloatingActionButton(
+                onClick = {
+                    val intent = Intent(context, MainActivity::class.java)
+                    context.startActivity(intent)
+                    (context as? Activity)?.finish()
+                },
+                backgroundColor = customColor2,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(16.dp)
+            ) {
+                Icon(Icons.Default.ArrowBack,
+                    contentDescription = "Volver al inicio",
+                    tint = customColor)
             }
 
             Row(
