@@ -1,0 +1,13 @@
+# Este archivo es solo un marcador de posición
+# 
+# Instrucciones:
+# 1. Genere el APK de Citofono usando Android Studio o Gradle:
+#    ./gradlew assembleDebug
+# 2. Copie el APK generado desde app/build/outputs/apk/debug/app-debug.apk
+# 3. Péguelo en esta carpeta installer/
+# 4. Elimine este archivo placeholder
+#
+# El APK real debe llamarse "app-debug.apk" o actualice config.ini
+# con el nombre correcto del archivo APK.
+
+PLACEHOLDER_FOR_APK_FILE
