@@ -13,3 +13,9 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Installer specific ignores
+installer/*.apk
+installer/*.exe
+installer/temp_*
+installer/*.sed
