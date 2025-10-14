@@ -1,13 +1,10 @@
 package com.example.citofono
 
-import android.content.Context
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.admin.DevicePolicyManager
-import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -36,53 +33,34 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
-import com.example.citofono.ui.theme.CitofonoTheme
-import java.io.BufferedReader
-import java.io.File
-import java.io.FileInputStream
-import java.io.InputStreamReader
 import androidx.core.net.toUri
+import androidx.lifecycle.lifecycleScope
+import com.example.citofono.ui.theme.CitofonoTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 
-data class Contact(
-    val id: Int,
-    val name: String,
-    val phoneNumber: List<String>,
-    val department: String
-)
+private val icons: Any
+    get() {
+        TODO()
+    }
 
-/**
- * Composable que muestra un teclado numérico personalizado con botones grandes.
- *
- * @param onKeyClick Función lambda que se invoca cuando se presiona una tecla, recibiendo el valor de la tecla presionada.
- *
- * El teclado incluye:
- * - Números del 0 al 9, distribuidos en filas de 3 columnas.
- * - Letras A, B, C y D en una fila separada.
- * - Cada botón tiene un diseño redondeado, sombra y colores personalizados.
- * - Al presionar cualquier botón, se llama a `onKeyClick` con el valor correspondiente.
- */
+// ----------------- UI: Teclado -----------------
 @Composable
 fun NumericKeyboard(onKeyClick: (String) -> Unit) {
-    val numberKeys = listOf(
-        "1", "2", "3",
-        "4", "5", "6",
-        "7", "8", "9"
-    )
-    val letterKeys = listOf("A", "B", "C", "D")
+    val numberKeys = listOf("1","2","3","4","5","6","7","8","9")
+    val letterKeys = listOf("A","B","C","D")
+
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .fillMaxHeight()
-            .padding(16.dp),
+        modifier = Modifier.fillMaxWidth().fillMaxHeight().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
-        val numberRows = numberKeys.chunked(3)
-        numberRows.forEach { rowKeys ->
+        numberKeys.chunked(3).forEach { rowKeys ->
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
+                modifier = Modifier.fillMaxWidth().weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 rowKeys.forEach { key ->
@@ -90,223 +68,136 @@ fun NumericKeyboard(onKeyClick: (String) -> Unit) {
                         onClick = { onKeyClick(key) },
                         colors = ButtonDefaults.buttonColors(backgroundColor = Color.White),
                         shape = RoundedCornerShape(50),
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .shadow(elevation = 4.dp, shape = RoundedCornerShape(50))
-                    ) {
-                        Text(
-                            text = key,
-                            style = MaterialTheme.typography.h3,
-                            color = Color.Black
-                        )
-                    }
+                        modifier = Modifier.weight(1f).fillMaxHeight().shadow(4.dp, RoundedCornerShape(50))
+                    ) { Text(text = key, style = MaterialTheme.typography.h3, color = Color.Black) }
                 }
             }
         }
-        // Fila especial para el "0" centrado
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Spacer(modifier = Modifier.weight(1f))
+        Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Spacer(Modifier.weight(1f))
             Button(
                 onClick = { onKeyClick("0") },
                 colors = ButtonDefaults.buttonColors(backgroundColor = Color.White),
                 shape = RoundedCornerShape(50),
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .shadow(elevation = 4.dp, shape = RoundedCornerShape(50))
-            ) {
-                Text(
-                    text = "0",
-                    style = MaterialTheme.typography.h3,
-                    color = Color.Black
-                )
-            }
-            Spacer(modifier = Modifier.weight(1f))
+                modifier = Modifier.weight(1f).fillMaxHeight().shadow(4.dp, RoundedCornerShape(50))
+            ) { Text("0", style = MaterialTheme.typography.h3, color = Color.Black) }
+            Spacer(Modifier.weight(1f))
         }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+        Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             letterKeys.forEach { key ->
                 Button(
                     onClick = { onKeyClick(key) },
                     colors = ButtonDefaults.buttonColors(backgroundColor = Color.White),
                     shape = RoundedCornerShape(50),
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .shadow(elevation = 4.dp, shape = RoundedCornerShape(50))
-                ) {
-                    Text(
-                        text = key,
-                        style = MaterialTheme.typography.h4,
-                        color = Color.Black
-                    )
-                }
+                    modifier = Modifier.weight(1f).fillMaxHeight().shadow(4.dp, RoundedCornerShape(50))
+                ) { Text(key, style = MaterialTheme.typography.h4, color = Color.Black) }
             }
         }
     }
 }
+
 @Composable
 fun ResponsiveKeyboardBox(onKeyClick: (String) -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .fillMaxHeight(0.8f)
-            .wrapContentHeight()
-            .padding(8.dp)
-    ) {
+    Box(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.8f).wrapContentHeight().padding(8.dp)) {
         NumericKeyboard(onKeyClick = onKeyClick)
     }
 }
-/**
- * Pantalla de búsqueda de departamentos y selección de teléfonos para llamar.
- *
- * @param contacts Lista de contactos disponibles.
- * @param onCallClick Función lambda que se invoca al seleccionar un número para llamar. Recibe el número y el departamento.
- * @param searchQuery Texto actual de búsqueda ingresado por el usuario.
- * @param onSearchQueryChange Función lambda que se invoca cuando cambia el texto de búsqueda.
- *
- * Características:
- * - Permite buscar departamentos por nombre.
- * - Muestra un teclado numérico personalizado para ingresar la búsqueda.
- * - Si el departamento existe y tiene varios teléfonos, muestra un diálogo para seleccionar cuál llamar.
- * - Muestra un Snackbar si el departamento no se encuentra.
- * - Permite limpiar la búsqueda y reiniciar el campo.
- */
+
+// ----------------- Modelo de resolución -----------------
+data class ResolvedContact(val department: String, val phones: List<String>)
+
+// ----------------- Pantalla de búsqueda -----------------
 @Composable
 fun SearchScreen(
-    contacts: List<Contact>,
-    onCallClick: (String, String) -> Unit,
     searchQuery: String,
-    onSearchQueryChange: (String) -> Unit
+    onSearchQueryChange: (String) -> Unit,
+    resolveDepto: suspend (String) -> ResolvedContact?,
+    onCallClick: (String, String) -> Unit
 ) {
+    val scope = rememberCoroutineScope()
     var showDialog by remember { mutableStateOf(false) }
     var selectedPhoneNumbers by remember { mutableStateOf(listOf<String>()) }
     var selectedDepartment by remember { mutableStateOf("") }
     var selectedPhoneNumber by remember { mutableStateOf("") }
-    var selectedPhoneIndex by remember { mutableIntStateOf(-1) }
+    var selectedPhoneIndex by remember { mutableStateOf(-1) }
     var departmentNotFound by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(departmentNotFound) {
         if (departmentNotFound) {
-            snackbarHostState.showSnackbar(
-                message = "DEPTO NO ENCONTRADO",
-                duration = SnackbarDuration.Short
-            )
+            snackbarHostState.showSnackbar("DEPTO NO ENCONTRADO", duration = SnackbarDuration.Short)
             departmentNotFound = false
         }
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
+        modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         SnackbarHost(hostState = snackbarHostState)
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             TextField(
                 value = searchQuery,
                 onValueChange = onSearchQueryChange,
-                label = { Text("Buscar Departamento") },
+                label = { Text("Buscar Departamento (ej: 802D)") },
                 textStyle = MaterialTheme.typography.h4,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(80.dp)
-                    .focusRequester(focusRequester)
-                    .focusProperties { canFocus = false }
+                modifier = Modifier.weight(1f).height(80.dp)
+                    .focusRequester(focusRequester).focusProperties { canFocus = false }
             )
             Spacer(modifier = Modifier.width(8.dp))
             Button(
                 onClick = { onSearchQueryChange("") },
                 modifier = Modifier.size(80.dp),
-                colors = ButtonDefaults.buttonColors(
-                    backgroundColor = Color.Red
-                )
-            ) {
-                Icon(Icons.Default.Delete, contentDescription = "Borrar")
-            }
+                colors = ButtonDefaults.buttonColors(backgroundColor = Color.Red)
+            ) { Icon(Icons.Default.Delete, contentDescription = "Borrar") }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-
         ResponsiveKeyboardBox(onKeyClick = { key -> onSearchQueryChange(searchQuery + key) })
-
         Spacer(modifier = Modifier.height(16.dp))
 
         Button(
-
             onClick = {
-                if (searchQuery.isNotBlank()) {
-                    val exactMatches = contacts.filter { it.department.equals(searchQuery, ignoreCase = true) }
-                    val departmentContacts = if (exactMatches.isNotEmpty()) {
-                        exactMatches
-                    } else {
-                        contacts.filter { it.department.startsWith(searchQuery, ignoreCase = true) }
-                    }
-
-                    if (departmentContacts.isNotEmpty()) {
-                        val firstContact = departmentContacts.first()
-                        if (firstContact.phoneNumber.isNotEmpty()) {
-                            selectedPhoneNumbers = firstContact.phoneNumber
-                            selectedDepartment = firstContact.department
-                            if (selectedPhoneNumbers.size > 1 && selectedPhoneNumbers[1].contains("-")) {
-                                onCallClick(selectedPhoneNumbers[0], selectedDepartment)
-                            } else {
-                                showDialog = true
-                            }
-                            departmentNotFound = false
-                        }
-                    } else {
-                        departmentNotFound = true
-                    }
-                } else {
+                if (searchQuery.isBlank()) {
                     departmentNotFound = true
+                    return@Button
+                }
+                scope.launch {
+                    val result = resolveDepto(searchQuery)
+                    if (result == null || result.phones.isEmpty()) {
+                        departmentNotFound = true
+                        return@launch
+                    }
+                    selectedDepartment = result.department
+                    selectedPhoneNumbers = result.phones
+                    if (result.phones.size == 1) {
+                        onCallClick(result.phones.first(), result.department)
+                    } else {
+                        showDialog = true
+                    }
                 }
             },
-
-            modifier = Modifier
-                .padding(8.dp)
-                .fillMaxWidth()
-                .height(80.dp),
+            modifier = Modifier.padding(8.dp).fillMaxWidth().height(80.dp),
             colors = ButtonDefaults.buttonColors(backgroundColor = Color.Green)
-        ) {
-            Icon(Icons.Default.Phone, contentDescription = "Llamar")
-        }
+        ) { Icon(Icons.Default.Phone, contentDescription = "Llamar") }
 
         if (showDialog) {
             AlertDialog(
                 onDismissRequest = { showDialog = false },
-                title = { Text("Seleccionar Teléfono",style = MaterialTheme.typography.h5) },
+                title = { Text("Seleccionar Teléfono", style = MaterialTheme.typography.h5) },
                 text = {
                     Column {
-                        Text("¿A qué número desea llamar?",style = MaterialTheme.typography.h5)
+                        Text("¿A qué número desea llamar?", style = MaterialTheme.typography.h5)
                         selectedPhoneNumbers.forEachIndexed { index, phone ->
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        selectedPhoneIndex = index
-                                        selectedPhoneNumber = phone
-                                    }
-                                    .padding(8.dp)
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    selectedPhoneIndex = index
+                                    selectedPhoneNumber = phone
+                                }.padding(8.dp)
                             ) {
                                 RadioButton(
                                     selected = selectedPhoneIndex == index,
@@ -315,93 +206,37 @@ fun SearchScreen(
                                         selectedPhoneNumber = phone
                                     }
                                 )
-                                Text(text = "Teléfono ${index + 1}", style = MaterialTheme.typography.h5)
+                                Text(text = "Teléfono ${index + 1}: $phone", style = MaterialTheme.typography.h6)
                             }
                         }
                     }
                 },
                 confirmButton = {
-                    Button(
-                        onClick = {
-                            onCallClick(selectedPhoneNumber, selectedDepartment)
-                            showDialog = false
-                            selectedPhoneNumber = ""
-                            selectedPhoneIndex = -1
-                        }
-                    ) {
-                        Text("Llamar", style = MaterialTheme.typography.h5)
-                    }
+                    Button(onClick = {
+                        if (selectedPhoneIndex >= 0) onCallClick(selectedPhoneNumber, selectedDepartment)
+                        showDialog = false
+                        selectedPhoneNumber = ""
+                        selectedPhoneIndex = -1
+                    }) { Text("Llamar", style = MaterialTheme.typography.h5) }
                 },
-                dismissButton = {
-                    Button(onClick = { showDialog = false }) {
-                        Text("Cancelar", style = MaterialTheme.typography.h5)
-                    }
-                }
+                dismissButton = { Button(onClick = { showDialog = false }) { Text("Cancelar", style = MaterialTheme.typography.h5) } }
             )
         }
     }
 }
 
-/**
- * Carga los contactos desde un archivo CSV ubicado en el directorio de archivos internos de la aplicación.
- *
- * @param context Contexto de la aplicación.
- * @return Lista de contactos cargados desde el archivo CSV.
- */
-fun loadContactsFromCsv(context: Context): List<Contact> {
-    val contacts = mutableListOf<Contact>()
-
-    val file = File(context.filesDir, "contactos.csv")
-    if (file.exists()) {
-        val inputStream = FileInputStream(file)
-        val reader = BufferedReader(InputStreamReader(inputStream))
-
-        reader.useLines { lines ->
-            lines.forEach { line ->
-                val tokens = line.split(";")
-                if (tokens.size >= 4) {
-                    val phoneNumber = listOf(tokens[1], tokens[2])
-                    val contact = Contact(
-                        id = contacts.size,
-                        name = tokens[0],
-                        phoneNumber = phoneNumber.filter { it.isNotBlank() },
-                        department = tokens[0]
-                    )
-                    contacts.add(contact)
-                }
-            }
-        }
-    }
-    return contacts
-}
-
-/**
- * Actividad principal de la aplicación.
- *
- * Esta actividad se encarga de gestionar la interfaz de usuario y la lógica de negocio relacionada con los contactos.
- * También maneja el modo quiosco y las llamadas telefónicas.
- */
+// ----------------- MainActivity -----------------
 class MainActivity : ComponentActivity() {
 
-    private val contacts = mutableStateListOf<Contact>()
+    // Cliente ESB (usa tus valores reales)
+    private val esb = EsbClient(host = "10.0.2.2", port = 5000)
+
     private lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
     private var pendingPhoneNumber: String? = null
     private var searchQuery by mutableStateOf("")
 
-    private val updateContactsReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            contacts.clear()
-            contacts.addAll(loadContactsFromCsv(context!!))
-            Toast.makeText(context, "Contactos actualizados", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private val devicePolicyManager by lazy {
-        getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager
-    }
-    private val adminComponentName by lazy {
-        ComponentName(this, MyDeviceAdminReceiver::class.java)
-    }
+    private val devicePolicyManager by lazy { getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager }
+    private val adminComponentName by lazy { ComponentName(this, MyDeviceAdminReceiver::class.java) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -412,7 +247,7 @@ class MainActivity : ComponentActivity() {
 
         requestPermissionLauncher = registerForActivityResult(
             ActivityResultContracts.RequestPermission()
-        ) { isGranted: Boolean ->
+        ) { isGranted ->
             if (isGranted) {
                 pendingPhoneNumber?.let { makeCall(it) }
                 pendingPhoneNumber = null
@@ -421,22 +256,26 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        contacts.addAll(loadContactsFromCsv(this))
-
+        // Conexión perezosa: se asegura antes de cada request
         setContent {
             CitofonoTheme {
                 val context = LocalContext.current
                 Box(modifier = Modifier.fillMaxSize()) {
                     Column(modifier = Modifier.fillMaxSize()) {
                         SearchScreen(
-                            contacts = contacts,
+                            searchQuery = searchQuery,
+                            onSearchQueryChange = { searchQuery = it },
+                            resolveDepto = { depto -> fetchContactFromService(depto) },
                             onCallClick = { phoneNumber, _ ->
                                 makeCall(phoneNumber)
-                                // Reinicia el query después de llamar
+                                // registra la llamada
+                                lifecycleScope.launch(Dispatchers.IO) {
+                                    try {
+                                        recordCall(phoneNumber)
+                                    } catch (_: Exception) { }
+                                }
                                 searchQuery = ""
-                            },
-                            searchQuery = searchQuery,
-                            onSearchQueryChange = { searchQuery = it }
+                            }
                         )
                     }
                     FloatingActionButton(
@@ -444,33 +283,11 @@ class MainActivity : ComponentActivity() {
                             val intent = Intent(context, AdminActivity::class.java)
                             context.startActivity(intent)
                         },
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(16.dp)
-                    ) {
-                        Icon(Icons.Default.Settings, contentDescription = "Ir a Admin")
-                    }
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
+                    ) { Icon(Icons.Default.Settings, contentDescription = "Ir a Admin") }
                 }
             }
         }
-    }
-
-    @SuppressLint("UnspecifiedRegisterReceiverFlag")
-    override fun onStart() {
-        super.onStart()
-        val filter = IntentFilter("com.example.citofono.UPDATE_CONTACTS")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(updateContactsReceiver, filter, RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(updateContactsReceiver, filter)
-        }
-        contacts.clear()
-        contacts.addAll(loadContactsFromCsv(this))
-    }
-
-    override fun onStop() {
-        super.onStop()
-        unregisterReceiver(updateContactsReceiver)
     }
 
     override fun onResume() {
@@ -478,11 +295,64 @@ class MainActivity : ComponentActivity() {
         searchQuery = ""
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        esb.close()
+    }
+
+    // -------- ESB helpers --------
+    private suspend fun ensureConnected(): Boolean = withContext(Dispatchers.IO) {
+        if (!esb.isConnected()) esb.connectAndRegister(kind = "client") else true
+    }
+
+    private suspend fun fetchContactFromService(depto: String): ResolvedContact? = withContext(Dispatchers.IO) {
+        if (!ensureConnected()) return@withContext null
+
+        // Servicio: Contacts / Acción: search
+        val body = JSONObject()
+            .put("departamento", depto)     // p.ej. "802D" (el servicio puede aceptar prefijos)
+            .put("limit", 5)
+
+        val resp = esb.request(service = "Contacts", action = "search", body = body, timeoutMs = 5000)
+
+        // Estructura robusta: payload -> (data?) -> contacts[]
+        val payload = resp.optJSONObject("payload") ?: resp
+        val data = payload.optJSONObject("data") ?: payload
+        val contacts = data.optJSONArray("contacts") ?: JSONArray()
+        if (contacts.length() == 0) return@withContext null
+
+        val c0 = contacts.getJSONObject(0)
+        val department = c0.optString("departamento", depto)
+        val phones = extractPhones(c0)
+        if (phones.isEmpty()) null else ResolvedContact(department, phones)
+    }
+
+    private fun extractPhones(obj: JSONObject): List<String> {
+        val out = mutableListOf<String>()
+        val raw = obj.opt("telefono")
+        when (raw) {
+            is JSONArray -> for (i in 0 until raw.length()) out += raw.optString(i)
+            is String -> raw.split(",", ";", "/", "|", " ").map { it.trim() }.filter { it.isNotBlank() }.forEach { out += it }
+        }
+        return out.distinct()
+    }
+
+    private suspend fun recordCall(destination: String) {
+        if (!ensureConnected()) return
+        val body = JSONObject()
+            .put("callerId", "android-device")
+            .put("destination", destination)
+            .put("status", "attempted")
+            .put("timestamp", System.currentTimeMillis())
+        // Servicio de llamadas según tu diagrama: "Calls"
+        esb.request(service = "Calls", action = "record", body = body, timeoutMs = 4000)
+    }
+
+    // -------- Kiosk & llamadas --------
+    @SuppressLint("InlinedApi")
     private fun setLockTaskFeatures() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            val context = applicationContext
-            val dpm = context.getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager
-            dpm.setLockTaskFeatures(
+            devicePolicyManager.setLockTaskFeatures(
                 adminComponentName,
                 DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS or
                         DevicePolicyManager.LOCK_TASK_FEATURE_HOME or
@@ -496,39 +366,21 @@ class MainActivity : ComponentActivity() {
         try {
             devicePolicyManager.setLockTaskPackages(
                 adminComponentName,
-                arrayOf(
-                    packageName,
-                    "com.android.dialer",
-                    "com.google.android.dialer",
-                    "com.android.incallui",
-                    "com.android.dialer.DialtactsActivity"
-                )
+                arrayOf(packageName, "com.android.dialer", "com.google.android.dialer", "com.android.incallui", "com.android.dialer.DialtactsActivity")
             )
         } catch (e: SecurityException) {
             e.printStackTrace()
-            Toast.makeText(
-                this,
-                "No se pudo configurar LockTaskPackages. ¿La app es Device Owner?",
-                Toast.LENGTH_LONG
-            ).show()
+            Toast.makeText(this, "No se pudo configurar LockTaskPackages. ¿La app es Device Owner?", Toast.LENGTH_LONG).show()
         }
     }
 
     private fun startKioskMode() {
-        try {
-            startLockTask()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        try { startLockTask() } catch (e: Exception) { e.printStackTrace() }
     }
 
     private fun makeCall(phoneNumber: String) {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE)
-            == PackageManager.PERMISSION_GRANTED
-        ) {
-            val intent = Intent(Intent.ACTION_CALL).apply {
-                data = ("tel:" + validatePhoneNumber(phoneNumber)).toUri()
-            }
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
+            val intent = Intent(Intent.ACTION_CALL).apply { data = ("tel:" + validatePhoneNumber(phoneNumber)).toUri() }
             startActivity(intent)
         } else {
             pendingPhoneNumber = phoneNumber
@@ -536,35 +388,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun validatePhoneNumber(phoneNumber: String): String {
-        return if (phoneNumber.startsWith("+")) phoneNumber else "+56$phoneNumber"
-    }
+    private fun validatePhoneNumber(phoneNumber: String): String =
+        if (phoneNumber.startsWith("+")) phoneNumber else "+56$phoneNumber"
 }
 
-// Preview para NumericKeyboard
+// ----------------- Previews -----------------
 @Preview(showBackground = true, name = "NumericKeyboard Preview")
 @Composable
-fun PreviewNumericKeyboard() {
-    CitofonoTheme {
-        NumericKeyboard(onKeyClick = {})
-    }
-}
+fun PreviewNumericKeyboard() { CitofonoTheme { NumericKeyboard(onKeyClick = {}) } }
 
-// Preview para SearchScreen
 @Preview(showBackground = true, name = "SearchScreen Preview")
 @Composable
 fun PreviewSearchScreen() {
-    val sampleContacts = listOf(
-        Contact(1, "Juan", listOf("123456789", "987654321"), "Depto A"),
-        Contact(2, "Ana", listOf("555555555"), "Depto B")
-    )
-    var searchQuery by remember { mutableStateOf("") }
     CitofonoTheme {
         SearchScreen(
-            contacts = sampleContacts,
-            onCallClick = { _, _ -> },
-            searchQuery = searchQuery,
-            onSearchQueryChange = { searchQuery = it }
+            searchQuery = "",
+            onSearchQueryChange = {},
+            resolveDepto = { ResolvedContact("802D", listOf("987654321", "123456789")) },
+            onCallClick = { _, _ -> }
         )
     }
 }
