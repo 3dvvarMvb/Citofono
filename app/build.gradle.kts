@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.example.citofono"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.example.citofono"
@@ -43,31 +43,40 @@ android {
 }
 
 dependencies {
+    // Core & Lifecycle
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
-    implementation("org.apache.poi:poi-ooxml:5.2.3")
-
-
-    implementation(platform("androidx.compose:compose-bom:2023.10.00"))
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.foundation:foundation")
-    implementation("androidx.compose.material:material")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.runtime:runtime")
-
-    implementation(libs.androidx.material3)
-    implementation(libs.androidx.material)
-
     implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.androidx.datastore.core.android)
 
+    // Jetpack Compose - using the Bill of Materials (BOM)
+    // The BOM ensures that all Compose libraries use compatible versions.
+    implementation(platform(libs.androidx.compose.bom)) // Assuming libs.versions.toml is updated to a recent version like 2024.05.00
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.compose.foundation)
+    implementation(libs.androidx.compose.material) // For Material 2 components
+    implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.androidx.compose.runtime)
+    implementation(libs.androidx.material3) // For Material 3 components
+
+    // DataStore
+    implementation(libs.androidx.datastore.preferences)
+
+    // Third-party libraries (e.g., Apache POI)
+    implementation(libs.poi.ooxml)
+
+    // Testing - Unit Tests
     testImplementation(libs.junit)
+
+    // Testing - Android Instrumented Tests
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.5.0")
+    androidTestImplementation(platform(libs.androidx.compose.bom)) // Also use BOM for testing
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
 
-    debugImplementation("androidx.compose.ui:ui-tooling")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
-
+    // Debugging - Only included in debug builds
+    debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
+
