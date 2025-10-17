@@ -4,6 +4,10 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="com.example.citofono">
 
+    <!-- Permiso para usar Internet (REQUERIDO para conectarse al BUS) -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <!-- Permiso para llamadas telefónicas -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.WRITE_CONTACTS" />
@@ -45,6 +49,12 @@
         <activity
             android:name=".AdminActivity"
             android:exported="true" />
+
+        <activity
+            android:name=".ChatsActivity"
+            android:exported="true" />
+
+
 
         <!-- Receiver para Device Admin (modo kiosco real) -->
         <receiver
