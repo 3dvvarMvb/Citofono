@@ -178,7 +178,16 @@ class EsbClient(
         } catch (e: Exception) {
             Log.e("EsbClient", "listen error: ${e.message}", e)
         } finally {
+            // Reconexión con backoff simple
             close()
+            var delayMs = 500L
+            repeat(6) { // ~ hasta ~30s
+                try {
+                    if (connectAndRegister("client", null)) return
+                } catch (_: Exception) {}
+                Thread.sleep(delayMs)
+                delayMs = (delayMs * 2).coerceAtMost(8000L)
+            }
         }
     }
 

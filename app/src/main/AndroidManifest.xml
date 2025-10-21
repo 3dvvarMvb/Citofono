@@ -4,19 +4,18 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="com.example.citofono">
 
-    <!-- Permisos mínimos -->
-    <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.WRITE_CONTACTS" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
-    <!-- Telephony opcional -->
     <uses-feature
         android:name="android.hardware.telephony"
         android:required="false" />
 
     <application
-        android:usesCleartextTraffic="true"
-        android:networkSecurityConfig="@xml/network_security_config"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -28,44 +27,20 @@
         tools:targetApi="31">
 
         <activity
-            android:name=".EsbDebugActivity"
+            android:name=".AuthActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:label="@string/app_name"
-            android:theme="@style/Theme.Citofono"
-            android:lockTaskMode="if_whitelisted">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
 
-        <!-- Pantalla Admin (solo salir de Kiosk) -->
-        <activity
-            android:name=".AdminActivity"
-            android:exported="true" />
+        <!-- Main y Admin NO deben ser launcher -->
+        <activity android:name=".MainActivity" android:exported="false"/>
+        <activity android:name=".AdminActivity" android:exported="false"/>
 
-        <!-- Device Admin (modo kiosco real) -->
-        <receiver
-            android:name=".MyDeviceAdminReceiver"
-            android:label="@string/my_device_admin_label"
-            android:description="@string/admin_receiver_description"
-            android:exported="true"
-            android:permission="android.permission.BIND_DEVICE_ADMIN">
-            <meta-data
-                android:name="android.app.device_admin"
-                android:resource="@xml/device_admin_receiver" />
-            <intent-filter>
-                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED"/>
-            </intent-filter>
-        </receiver>
-
+        <activity android:name=".ChatsActivity" android:exported="true" />
+        <activity android:name=".EsbDebugActivity" android:exported="true" />
+        <!-- Sin DeviceAdmin/LockTask -->
     </application>
 </manifest>

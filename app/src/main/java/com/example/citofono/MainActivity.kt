@@ -1,290 +1,96 @@
 package com.example.citofono
 
 import android.Manifest
-import android.annotation.SuppressLint
-import android.app.admin.DevicePolicyManager
-import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import com.example.citofono.ui.theme.CitofonoTheme
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
-private val icons: Any
-    get() {
-        TODO()
-    }
-
-// ----------------- UI: Teclado -----------------
-@Composable
-fun NumericKeyboard(onKeyClick: (String) -> Unit) {
-    val numberKeys = listOf("1","2","3","4","5","6","7","8","9")
-    val letterKeys = listOf("A","B","C","D")
-
-    Column(
-        modifier = Modifier.fillMaxWidth().fillMaxHeight().padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(24.dp)
-    ) {
-        numberKeys.chunked(3).forEach { rowKeys ->
-            Row(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                rowKeys.forEach { key ->
-                    Button(
-                        onClick = { onKeyClick(key) },
-                        colors = ButtonDefaults.buttonColors(backgroundColor = Color.White),
-                        shape = RoundedCornerShape(50),
-                        modifier = Modifier.weight(1f).fillMaxHeight().shadow(4.dp, RoundedCornerShape(50))
-                    ) { Text(text = key, style = MaterialTheme.typography.h3, color = Color.Black) }
-                }
-            }
-        }
-        Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Spacer(Modifier.weight(1f))
-            Button(
-                onClick = { onKeyClick("0") },
-                colors = ButtonDefaults.buttonColors(backgroundColor = Color.White),
-                shape = RoundedCornerShape(50),
-                modifier = Modifier.weight(1f).fillMaxHeight().shadow(4.dp, RoundedCornerShape(50))
-            ) { Text("0", style = MaterialTheme.typography.h3, color = Color.Black) }
-            Spacer(Modifier.weight(1f))
-        }
-        Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            letterKeys.forEach { key ->
-                Button(
-                    onClick = { onKeyClick(key) },
-                    colors = ButtonDefaults.buttonColors(backgroundColor = Color.White),
-                    shape = RoundedCornerShape(50),
-                    modifier = Modifier.weight(1f).fillMaxHeight().shadow(4.dp, RoundedCornerShape(50))
-                ) { Text(key, style = MaterialTheme.typography.h4, color = Color.Black) }
-            }
-        }
-    }
-}
-
-@Composable
-fun ResponsiveKeyboardBox(onKeyClick: (String) -> Unit) {
-    Box(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.8f).wrapContentHeight().padding(8.dp)) {
-        NumericKeyboard(onKeyClick = onKeyClick)
-    }
-}
-
-// ----------------- Modelo de resolución -----------------
 data class ResolvedContact(val department: String, val phones: List<String>)
 
-// ----------------- Pantalla de búsqueda -----------------
-@Composable
-fun SearchScreen(
-    searchQuery: String,
-    onSearchQueryChange: (String) -> Unit,
-    resolveDepto: suspend (String) -> ResolvedContact?,
-    onCallClick: (String, String) -> Unit
-) {
-    val scope = rememberCoroutineScope()
-    var showDialog by remember { mutableStateOf(false) }
-    var selectedPhoneNumbers by remember { mutableStateOf(listOf<String>()) }
-    var selectedDepartment by remember { mutableStateOf("") }
-    var selectedPhoneNumber by remember { mutableStateOf("") }
-    var selectedPhoneIndex by remember { mutableStateOf(-1) }
-    var departmentNotFound by remember { mutableStateOf(false) }
-    val snackbarHostState = remember { SnackbarHostState() }
-    val focusRequester = remember { FocusRequester() }
-
-    LaunchedEffect(departmentNotFound) {
-        if (departmentNotFound) {
-            snackbarHostState.showSnackbar("DEPTO NO ENCONTRADO", duration = SnackbarDuration.Short)
-            departmentNotFound = false
-        }
-    }
-
-    Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        SnackbarHost(hostState = snackbarHostState)
-
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            TextField(
-                value = searchQuery,
-                onValueChange = onSearchQueryChange,
-                label = { Text("Buscar Departamento (ej: 802D)") },
-                textStyle = MaterialTheme.typography.h4,
-                modifier = Modifier.weight(1f).height(80.dp)
-                    .focusRequester(focusRequester).focusProperties { canFocus = false }
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Button(
-                onClick = { onSearchQueryChange("") },
-                modifier = Modifier.size(80.dp),
-                colors = ButtonDefaults.buttonColors(backgroundColor = Color.Red)
-            ) { Icon(Icons.Default.Delete, contentDescription = "Borrar") }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-        ResponsiveKeyboardBox(onKeyClick = { key -> onSearchQueryChange(searchQuery + key) })
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(
-            onClick = {
-                if (searchQuery.isBlank()) {
-                    departmentNotFound = true
-                    return@Button
-                }
-                scope.launch {
-                    val result = resolveDepto(searchQuery)
-                    if (result == null || result.phones.isEmpty()) {
-                        departmentNotFound = true
-                        return@launch
-                    }
-                    selectedDepartment = result.department
-                    selectedPhoneNumbers = result.phones
-                    if (result.phones.size == 1) {
-                        onCallClick(result.phones.first(), result.department)
-                    } else {
-                        showDialog = true
-                    }
-                }
-            },
-            modifier = Modifier.padding(8.dp).fillMaxWidth().height(80.dp),
-            colors = ButtonDefaults.buttonColors(backgroundColor = Color.Green)
-        ) { Icon(Icons.Default.Phone, contentDescription = "Llamar") }
-
-        if (showDialog) {
-            AlertDialog(
-                onDismissRequest = { showDialog = false },
-                title = { Text("Seleccionar Teléfono", style = MaterialTheme.typography.h5) },
-                text = {
-                    Column {
-                        Text("¿A qué número desea llamar?", style = MaterialTheme.typography.h5)
-                        selectedPhoneNumbers.forEachIndexed { index, phone ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth().clickable {
-                                    selectedPhoneIndex = index
-                                    selectedPhoneNumber = phone
-                                }.padding(8.dp)
-                            ) {
-                                RadioButton(
-                                    selected = selectedPhoneIndex == index,
-                                    onClick = {
-                                        selectedPhoneIndex = index
-                                        selectedPhoneNumber = phone
-                                    }
-                                )
-                                Text(text = "Teléfono ${index + 1}: $phone", style = MaterialTheme.typography.h6)
-                            }
-                        }
-                    }
-                },
-                confirmButton = {
-                    Button(onClick = {
-                        if (selectedPhoneIndex >= 0) onCallClick(selectedPhoneNumber, selectedDepartment)
-                        showDialog = false
-                        selectedPhoneNumber = ""
-                        selectedPhoneIndex = -1
-                    }) { Text("Llamar", style = MaterialTheme.typography.h5) }
-                },
-                dismissButton = { Button(onClick = { showDialog = false }) { Text("Cancelar", style = MaterialTheme.typography.h5) } }
-            )
-        }
-    }
-}
-
-// ----------------- MainActivity -----------------
 class MainActivity : ComponentActivity() {
-
-    // Cliente ESB (usa tus valores reales)
-    private val esb = EsbClient(host = "10.0.2.2", port = 5000)
 
     private lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
     private var pendingPhoneNumber: String? = null
+    private var pendingDepartment: String? = null
     private var searchQuery by mutableStateOf("")
-
-    private val devicePolicyManager by lazy { getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager }
-    private val adminComponentName by lazy { ComponentName(this, MyDeviceAdminReceiver::class.java) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        configureLockTaskPackages()
-        setLockTaskFeatures()
-        startKioskMode()
+        // Guard: si no hay sesión válida, vuelve a Auth
+        val sid = SessionManager.sessionId(this)
+        if (sid.isBlank()) {
+            startActivity(Intent(this, AuthActivity::class.java)); finish(); return
+        }
 
         requestPermissionLauncher = registerForActivityResult(
             ActivityResultContracts.RequestPermission()
         ) { isGranted ->
             if (isGranted) {
-                pendingPhoneNumber?.let { makeCall(it) }
+                val num = pendingPhoneNumber
+                val dep = pendingDepartment
                 pendingPhoneNumber = null
+                pendingDepartment = null
+                if (num != null) makeCall(num, dep)
             } else {
                 Toast.makeText(this, "Permiso denegado para realizar llamadas", Toast.LENGTH_SHORT).show()
             }
         }
 
-        // Conexión perezosa: se asegura antes de cada request
         setContent {
             CitofonoTheme {
-                val context = LocalContext.current
-                Box(modifier = Modifier.fillMaxSize()) {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        SearchScreen(
-                            searchQuery = searchQuery,
-                            onSearchQueryChange = { searchQuery = it },
-                            resolveDepto = { depto -> fetchContactFromService(depto) },
-                            onCallClick = { phoneNumber, _ ->
-                                makeCall(phoneNumber)
-                                // registra la llamada
-                                lifecycleScope.launch(Dispatchers.IO) {
-                                    try {
-                                        recordCall(phoneNumber)
-                                    } catch (_: Exception) { }
+                var selectedTab by remember { mutableStateOf(0) } // 0: Marcador, 1: Mensajería (placeholder)
+
+                Scaffold(
+                    topBar = {
+                        TopAppBar(
+                            title = { Text("Citófono") },
+                            actions = {
+                                TextButton(onClick = { SessionManager.logoutAndGoToLogin(this@MainActivity) }) {
+                                    Text("Salir", color = MaterialTheme.colors.onPrimary)
                                 }
-                                searchQuery = ""
                             }
                         )
                     }
-                    FloatingActionButton(
-                        onClick = {
-                            val intent = Intent(context, AdminActivity::class.java)
-                            context.startActivity(intent)
-                        },
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
-                    ) { Icon(Icons.Default.Settings, contentDescription = "Ir a Admin") }
+                ) { padding ->
+                    Column(Modifier.fillMaxSize().padding(padding)) {
+                        TabRow(selectedTabIndex = selectedTab) {
+                            Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Marcador") })
+                            Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Mensajería") })
+                        }
+                        Box(Modifier.fillMaxSize()) {
+                            when (selectedTab) {
+                                0 -> SearchScreen(
+                                    searchQuery = searchQuery,
+                                    onSearchQueryChange = { searchQuery = it },
+                                    resolveDepto = { depto -> resolveDeptoToContact(depto) },
+                                    onCallClick = { phoneNumber, department ->
+                                        makeCall(phoneNumber, department)
+                                        searchQuery = ""
+                                    }
+                                )
+                                1 -> MensajeriaPlaceholder()
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -292,120 +98,78 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // si sesión cayó, vuelve a Auth
+        if (!SessionManager.isLoggedIn(this)) {
+            startActivity(Intent(this, AuthActivity::class.java)); finish()
+        }
         searchQuery = ""
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        esb.close()
+    private fun logoutAndExit() {
+        val sid = SessionManager.sessionId(this)
+        SessionManager.clear(this)
+        lifecycleScope.launch {
+            runCatching { EsbApi.authLogout(sid) } // best effort
+        }
+        startActivity(Intent(this, AuthActivity::class.java))
+        finish()
     }
 
-    // -------- ESB helpers --------
-    private suspend fun ensureConnected(): Boolean = withContext(Dispatchers.IO) {
-        if (!esb.isConnected()) esb.connectAndRegister(kind = "client") else true
-    }
+    // -------- Resolución de depto --------
+    private suspend fun resolveDeptoToContact(depto: String): ResolvedContact? {
+        val primary = try { EsbApi.searchContactsByDepto(depto.trim(), limit = 5) } catch (_: Exception) { JSONArray() }
+        val target = if (primary.length() > 0) primary else runCatching {
+            EsbApi.searchContactsFallback(depto.trim(), limit = 5)
+        }.getOrElse { JSONArray() }
 
-    private suspend fun fetchContactFromService(depto: String): ResolvedContact? = withContext(Dispatchers.IO) {
-        if (!ensureConnected()) return@withContext null
-
-        // Servicio: Contacts / Acción: search
-        val body = JSONObject()
-            .put("departamento", depto)     // p.ej. "802D" (el servicio puede aceptar prefijos)
-            .put("limit", 5)
-
-        val resp = esb.request(service = "Contacts", action = "search", body = body, timeoutMs = 5000)
-
-        // Estructura robusta: payload -> (data?) -> contacts[]
-        val payload = resp.optJSONObject("payload") ?: resp
-        val data = payload.optJSONObject("data") ?: payload
-        val contacts = data.optJSONArray("contacts") ?: JSONArray()
-        if (contacts.length() == 0) return@withContext null
-
-        val c0 = contacts.getJSONObject(0)
+        if (target.length() == 0) return null
+        val c0 = target.getJSONObject(0)
         val department = c0.optString("departamento", depto)
         val phones = extractPhones(c0)
-        if (phones.isEmpty()) null else ResolvedContact(department, phones)
+        return if (phones.isEmpty()) null else ResolvedContact(department, phones)
     }
 
     private fun extractPhones(obj: JSONObject): List<String> {
         val out = mutableListOf<String>()
-        val raw = obj.opt("telefono")
-        when (raw) {
-            is JSONArray -> for (i in 0 until raw.length()) out += raw.optString(i)
-            is String -> raw.split(",", ";", "/", "|", " ").map { it.trim() }.filter { it.isNotBlank() }.forEach { out += it }
+        when (val raw = obj.opt("telefono")) {
+            is org.json.JSONArray -> for (i in 0 until raw.length()) out += raw.optString(i)
+            is String -> raw.split(",", ";", "/", "|", " ")
+                .map { it.trim() }.filter { it.isNotBlank() }.forEach { out += it }
         }
         return out.distinct()
     }
 
-    private suspend fun recordCall(destination: String) {
-        if (!ensureConnected()) return
-        val body = JSONObject()
-            .put("callerId", "android-device")
-            .put("destination", destination)
-            .put("status", "attempted")
-            .put("timestamp", System.currentTimeMillis())
-        // Servicio de llamadas según tu diagrama: "Calls"
-        esb.request(service = "Calls", action = "record", body = body, timeoutMs = 4000)
-    }
+    // -------- Llamadas --------
+    private fun makeCall(phoneNumber: String, department: String? = null) {
+        val final = if (phoneNumber.startsWith("+")) phoneNumber else "+56$phoneNumber"
 
-    // -------- Kiosk & llamadas --------
-    @SuppressLint("InlinedApi")
-    private fun setLockTaskFeatures() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            devicePolicyManager.setLockTaskFeatures(
-                adminComponentName,
-                DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS or
-                        DevicePolicyManager.LOCK_TASK_FEATURE_HOME or
-                        DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS or
-                        DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO
-            )
-        }
-    }
-
-    private fun configureLockTaskPackages() {
-        try {
-            devicePolicyManager.setLockTaskPackages(
-                adminComponentName,
-                arrayOf(packageName, "com.android.dialer", "com.google.android.dialer", "com.android.incallui", "com.android.dialer.DialtactsActivity")
-            )
-        } catch (e: SecurityException) {
-            e.printStackTrace()
-            Toast.makeText(this, "No se pudo configurar LockTaskPackages. ¿La app es Device Owner?", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun startKioskMode() {
-        try { startLockTask() } catch (e: Exception) { e.printStackTrace() }
-    }
-
-    private fun makeCall(phoneNumber: String) {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
-            val intent = Intent(Intent.ACTION_CALL).apply { data = ("tel:" + validatePhoneNumber(phoneNumber)).toUri() }
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE)
+            == PackageManager.PERMISSION_GRANTED
+        ) {
+            lifecycleScope.launch {
+                runCatching {
+                    EsbApi.recordCall(
+                        destination = final,
+                        status = "attempted",
+                        durationSec = 5,
+                        callerId = "android-device",
+                        depto = department
+                    )
+                }
+            }
+            val intent = Intent(Intent.ACTION_CALL).apply { data = ("tel:$final").toUri() }
             startActivity(intent)
         } else {
-            pendingPhoneNumber = phoneNumber
+            pendingPhoneNumber = final
+            pendingDepartment = department
             requestPermissionLauncher.launch(Manifest.permission.CALL_PHONE)
         }
     }
-
-    private fun validatePhoneNumber(phoneNumber: String): String =
-        if (phoneNumber.startsWith("+")) phoneNumber else "+56$phoneNumber"
 }
 
-// ----------------- Previews -----------------
-@Preview(showBackground = true, name = "NumericKeyboard Preview")
 @Composable
-fun PreviewNumericKeyboard() { CitofonoTheme { NumericKeyboard(onKeyClick = {}) } }
-
-@Preview(showBackground = true, name = "SearchScreen Preview")
-@Composable
-fun PreviewSearchScreen() {
-    CitofonoTheme {
-        SearchScreen(
-            searchQuery = "",
-            onSearchQueryChange = {},
-            resolveDepto = { ResolvedContact("802D", listOf("987654321", "123456789")) },
-            onCallClick = { _, _ -> }
-        )
+private fun MensajeriaPlaceholder() {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text("Mensajería irá aquí (equipo de tu compañero).")
     }
 }

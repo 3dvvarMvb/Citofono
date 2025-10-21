@@ -1,4 +1,3 @@
-// app/src/main/java/com/example/citofono/EsbDebugActivity.kt
 package com.example.citofono
 
 import android.os.Bundle
@@ -116,7 +115,8 @@ fun EsbDebugScreen() {
                             destination = phone.trim(),
                             status = "attempted",
                             durationSec = 5,
-                            callerId = "android-device"
+                            callerId = "android-device",
+                            depto = depto.trim() // ← ahora se envía
                         )
                         callResult = resp.toString(2)
                     } catch (e: Exception) {
@@ -227,7 +227,7 @@ fun EsbDebugScreen() {
             Divider()
 
             // -------------------- ADMIN --------------------
-            Text("4) Administración (delegando a Autenticación)")
+            Text("4) Administración")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 Button(onClick = {
                     errorText = ""; adminResult = ""
@@ -313,7 +313,7 @@ fun EsbDebugScreen() {
             Text(
                 "- Auth: create_user, authenticate_user, validate_session, logout.\n" +
                 "- Admin: verify_admin, get_user_info, admin_update_user, admin_delete_user.\n" +
-                "- Todas las respuestas aparecen como JSON formateado."
+                "- Calls: record (con depto)."
             )
         }
     }

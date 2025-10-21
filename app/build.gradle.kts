@@ -4,20 +4,12 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+group = "com.tuapp"
+version = "1.0-SNAPSHOT"
+
 android {
     namespace = "com.example.citofono"
-    compileSdk = 35
-
-    packaging {
-        resources {
-            excludes += setOf(
-                "META-INF/LICENSE*",
-                "META-INF/NOTICE*",
-                "META-INF/DEPENDENCIES",
-                "META-INF/INDEX.LIST"
-            )
-        }
-    }
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.example.citofono"
@@ -43,58 +35,79 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
+    kotlin {
+        compilerOptions {
+            jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        }
     }
     buildFeatures {
         compose = true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.14" // (ajústalo a tu Kotlin: p.ej. 1.9.24 → 1.5.14; Kotlin 2.0.x → 1.5.15+)
     }
     buildToolsVersion = "35.0.1"
     ndkVersion = "28.0.12674087 rc2"
 }
 
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(17))
+    }
+}
+
 dependencies {
+    // Core & Lifecycle
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
-    implementation("org.apache.poi:poi-ooxml:5.2.5")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
-    implementation ("org.apache.poi:poi-ooxml-lite:5.2.5" )
-
-    implementation(platform("androidx.compose:compose-bom:2024.09.02")) // Ejemplo estable    
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.foundation:foundation")
-    implementation("androidx.compose.material:material")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.runtime:runtime")
-    implementation("androidx.compose.animation:animation")
-    implementation(libs.androidx.material3)
-    implementation(libs.androidx.material)
-
     implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.androidx.datastore.core.android)
+    
+    // Jetpack Compose - using the Bill of Materials (BOM)
+    // The BOM ensures that all Compose libraries use compatible versions.
+    implementation(platform(libs.androidx.compose.bom)) // Assuming libs.versions.toml is updated to a recent version like 2024.05.00
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.compose.foundation)
+    implementation(libs.androidx.compose.material) // For Material 2 components
+    implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.androidx.compose.runtime)
+    implementation(libs.androidx.material3) // For Material 3 components
 
+    // DataStore
+    implementation(libs.androidx.datastore.preferences)
+    implementation("com.google.code.gson:gson:2.13.2")
+    implementation("org.mongodb:bson:5.6.1")
+
+    // Third-party libraries (e.g., Apache POI)
+    implementation(libs.poi.ooxml)
+
+    // Testing - Unit Tests
     testImplementation(libs.junit)
+    testImplementation("com.google.code.gson:gson:2.13.2")
+    testImplementation("org.mongodb:bson:5.6.1")
+
+    // Testing - Android Instrumented Tests
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(platform(libs.androidx.compose.bom)) // Also use BOM for testing
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
 
-    debugImplementation("androidx.compose.ui:ui-tooling")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
-
-}
-// build.gradle.kts (solo el bloque dependencies)
-dependencies {
-
-
-    testImplementation(libs.junit)
-    androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.espresso.core)
-
-    debugImplementation("androidx.compose.ui:ui-tooling")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    // Debugging - Only included in debug builds
+    debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 
+tasks.register<JavaExec>("runChat") {
+    // Ejecutar la compilación de las clases main/debug antes de correr
+    dependsOn("compileDebugKotlin")
+    group = "application"
+    description = "Ejecuta el chat interactivo de forma aislada"
 
+    // Usar el output del compilador para el source set `debug`
+    val debugClassesDir = layout.buildDirectory.dir("tmp/kotlin-classes/debug").get().asFile
+    // En un módulo Android la configuración se llama 'debugRuntimeClasspath'
+    classpath = files(debugClassesDir) + configurations.getByName("debugRuntimeClasspath")
+
+    mainClass.set("com.example.citofono.ChatInteractiveKt")
+
+    // Habilitar entrada estándar
+    standardInput = System.`in`
+}
