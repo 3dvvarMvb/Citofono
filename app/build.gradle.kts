@@ -58,6 +58,19 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
+    implementation("org.apache.poi:poi-ooxml:5.2.3")
+
+
+    implementation(platform("androidx.compose:compose-bom:2023.10.00"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.material:material")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.runtime:runtime")
+
+    implementation(libs.androidx.material3)
+    implementation(libs.androidx.material)
+
     implementation(libs.androidx.lifecycle.viewmodel.compose)
 
     // Jetpack Compose - using the Bill of Materials (BOM)
@@ -119,7 +132,14 @@ tasks.register<Exec>("setupAdbTunnel") {
 
     // Ejecutar con bash para evitar problemas de permisos
     commandLine("bash", "${rootProject.projectDir}/scripts/adb_tunnel.sh")
+
 }
+    // Usar el output del compilador para el source set `debug`
+    val debugClassesDir = layout.buildDirectory.dir("tmp/kotlin-classes/debug").get().asFile
+    // En un módulo Android la configuración se llama 'debugRuntimeClasspath'
+    classpath = files(debugClassesDir) + configurations.getByName("debugRuntimeClasspath")
+
+    mainClass.set("com.example.citofono.ChatInteractiveKt")
 
 // Asegurar que al ejecutar runChat primero configure el túnel adb
 tasks.named("runChat") {
