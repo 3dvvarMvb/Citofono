@@ -54,6 +54,10 @@
             android:name=".ChatsActivity"
             android:exported="true" />
 
+        <activity
+            android:name=".MessageActivity"
+            android:exported="true" />
+
 
 
         <!-- Receiver para Device Admin (modo kiosco real) -->

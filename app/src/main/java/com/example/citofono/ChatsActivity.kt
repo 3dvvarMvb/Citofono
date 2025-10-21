@@ -2,6 +2,7 @@ package com.example.citofono
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -27,20 +28,25 @@ import org.bson.types.ObjectId
 data class Contact1(val name: String)
 
 class ChatsActivity : ComponentActivity() {
+    private val TAG = "ChatsActivity"
     private val chatViewModel: ChatViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        Log.d(TAG, "=== ChatsActivity onCreate INICIADO ===")
+
         // Obtener datos del usuario (por ahora hardcoded, luego desde login)
         val userId = ObjectId().toString() // Generar o recuperar del login
         val username = "Usuario_Android" // Recuperar del login
 
-        // Configurar reenvío de puertos ADB
-        //setupPortForwarding()
+        Log.d(TAG, "userId generado: $userId")
+        Log.d(TAG, "username: $username")
 
         // Conectar al servicio de chat
-        chatViewModel.connect(userId, username, busHost = "10.0.2.2", busPort = 5000)
+        Log.d(TAG, "Llamando a chatViewModel.connect()...")
+        // Usar 127.0.0.1 porque configuramos adb reverse desde el dispositivo al host
+        chatViewModel.connect(userId, username, busHost = "127.0.0.1", busPort = 5000)
 
         setContent {
             CitofonoTheme {
@@ -51,25 +57,37 @@ class ChatsActivity : ComponentActivity() {
                     onlineUsers = onlineUsers,
                     connectionState = connectionState,
                     onBackPressed = {
+                        Log.d(TAG, "Usuario presionó botón atrás")
                         chatViewModel.disconnect()
                         finish()
                     },
                     onContactClick = { user ->
+                        Log.d(TAG, "=== Usuario hizo click en contacto ===")
+                        Log.d(TAG, "  - username: ${user.username}")
+                        Log.d(TAG, "  - userId: ${user.userId}")
+                        Log.d(TAG, "  - clientId: ${user.clientId}")
+
                         // Navigate to MessageActivity
                         val intent = Intent(this, MessageActivity::class.java).apply {
                             putExtra("CONTACT_NAME", user.username)
                             putExtra("USER_ID", user.userId)
                             putExtra("CLIENT_ID", user.clientId)
                         }
+
+                        Log.d(TAG, "Intent creado, iniciando MessageActivity...")
                         startActivity(intent)
+                        Log.d(TAG, "startActivity() ejecutado")
                     }
                 )
             }
         }
+
+        Log.d(TAG, "=== ChatsActivity onCreate COMPLETADO ===")
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        Log.d(TAG, "onDestroy() - desconectando...")
         chatViewModel.disconnect()
     }
 }

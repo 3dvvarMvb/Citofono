@@ -111,3 +111,17 @@ tasks.register<JavaExec>("runChat") {
     // Habilitar entrada estándar
     standardInput = System.`in`
 }
+
+// Agrego una tarea que configura el túnel adb (adb reverse/forward) usando un script
+tasks.register<Exec>("setupAdbTunnel") {
+    group = "adb"
+    description = "Configura adb reverse/forward para el puerto del BUS (5000) usando scripts/adb_tunnel.sh"
+
+    // Ejecutar con bash para evitar problemas de permisos
+    commandLine("bash", "${rootProject.projectDir}/scripts/adb_tunnel.sh")
+}
+
+// Asegurar que al ejecutar runChat primero configure el túnel adb
+tasks.named("runChat") {
+    dependsOn("setupAdbTunnel")
+}

@@ -5,6 +5,7 @@ import com.google.gson.reflect.TypeToken
 import org.bson.types.ObjectId
 import java.io.*
 import java.net.Socket
+import java.net.InetSocketAddress
 import java.net.SocketTimeoutException
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
@@ -13,7 +14,26 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
-// Modelos de datos
+/**
+ * ============================================================================
+ * MODELOS DE DATOS - Estructuras para comunicación con el BUS y servicios
+ * ============================================================================
+ */
+
+/**
+ * BusMessage: Representa un mensaje completo que se envía/recibe del BUS
+ * - type: Tipo de mensaje (REGISTER, REQUEST, BROADCAST, DIRECT, etc.)
+ * - sender: ID del cliente que envía el mensaje
+ * - target: ID del cliente destino (para mensajes DIRECT)
+ * - service: Nombre del servicio al que se dirige (ej: "Mensajeria")
+ * - header: Encabezado con metadatos del mensaje
+ * - payload: Carga útil con los datos específicos de la acción
+ * - kind: Tipo de cliente ("client" o "service")
+ * - client_id: Identificador único del cliente
+ * - status: Estado de la respuesta ("success", "error")
+ * - event: Nombre del evento (para BROADCAST)
+ * - data: Datos adicionales del evento
+ */
 data class BusMessage(
     val type: String,
     val sender: String? = null,
@@ -28,11 +48,33 @@ data class BusMessage(
     val data: Map<String, Any>? = null
 )
 
+/**
+ * Header: Encabezado de un mensaje con metadatos
+ * - correlationId: ID único para correlacionar request/response
+ * - service: Nombre del servicio destino
+ */
 data class Header(
     val correlationId: String? = null,
     val service: String? = null
 )
 
+/**
+ * Payload: Carga útil de un mensaje con los datos de la acción
+ * - action: Acción a ejecutar (send, connect, getConversation, etc.)
+ * - userId: ID del usuario que realiza la acción
+ * - senderObjId: ID del remitente del mensaje
+ * - receiverObjId: ID del destinatario del mensaje
+ * - message: Texto del mensaje a enviar
+ * - ok: Indicador de éxito de la operación
+ * - error: Mensaje de error (si ok=false)
+ * - messageId: ID único del mensaje
+ * - timestamp: Marca de tiempo del mensaje
+ * - messages: Lista de mensajes en una conversación
+ * - hasMore: Indica si hay más mensajes disponibles
+ * - conversationId: ID de la conversación
+ * - isTyping: Indica si el usuario está escribiendo
+ * - pong: Respuesta a un ping/heartbeat
+ */
 data class Payload(
     val action: String? = null,
     val userId: String? = null,
@@ -50,6 +92,16 @@ data class Payload(
     val pong: Boolean? = null
 )
 
+/**
+ * ConversationMessage: Representa un mensaje individual en una conversación
+ * - id: ID único del mensaje
+ * - from: ID del usuario remitente
+ * - to: ID del usuario destinatario
+ * - text: Contenido del mensaje
+ * - ts: Timestamp en formato ISO 8601
+ * - deliveryStatus: Estado de entrega ("sent", "delivered")
+ * - readStatus: Estado de lectura ("read", "unread")
+ */
 data class ConversationMessage(
     val id: String,
     val from: String,
@@ -60,18 +112,42 @@ data class ConversationMessage(
     val readStatus: String? = null
 )
 
+/**
+ * UserInfo: Información básica de un usuario
+ * - user_id: ID único del usuario en la base de datos
+ * - username: Nombre de usuario para mostrar
+ */
 data class UserInfo(
     val user_id: String,
     val username: String
 )
 
+/**
+ * OnlineUser: Usuario conectado en el sistema
+ * - client_id: ID de la sesión/conexión del cliente
+ * - user_id: ID del usuario en la base de datos
+ * - username: Nombre de usuario
+ */
 data class OnlineUser(
     val client_id: String,
     val user_id: String,
     val username: String
 )
 
-// Funciones auxiliares
+/**
+ * ============================================================================
+ * FUNCIONES AUXILIARES DE COMUNICACIÓN
+ * ============================================================================
+ */
+
+/**
+ * sendJsonLine: Envía un objeto como JSON serializado al socket
+ * @param sock Socket de comunicación
+ * @param obj Objeto a serializar y enviar
+ *
+ * Convierte el objeto a JSON usando Gson y lo envía con un salto de línea
+ * al final para que el receptor pueda delimitar los mensajes
+ */
 fun sendJsonLine(sock: Socket, obj: Any) {
     val gson = Gson()
     val json = gson.toJson(obj) + "\n"
@@ -79,6 +155,15 @@ fun sendJsonLine(sock: Socket, obj: Any) {
     sock.getOutputStream().flush()
 }
 
+/**
+ * recvJsonLine: Recibe una línea JSON del socket y la deserializa
+ * @param sock Socket de comunicación
+ * @param timeout Tiempo máximo de espera en segundos (default: 5.0)
+ * @return Map con los datos deserializados
+ *
+ * Lee una línea del socket (hasta encontrar '\n') y la parsea como JSON
+ * usando Gson, retornando un Map con los datos
+ */
 fun recvJsonLine(sock: Socket, timeout: Double = 5.0): Map<String, Any> {
     sock.soTimeout = (timeout * 1000).toInt()
     val reader = BufferedReader(InputStreamReader(sock.getInputStream()))
@@ -88,31 +173,111 @@ fun recvJsonLine(sock: Socket, timeout: Double = 5.0): Map<String, Any> {
     return gson.fromJson<Map<String, Any>>(line, type) ?: emptyMap()
 }
 
+/**
+ * ============================================================================
+ * CLASE PRINCIPAL: InteractiveChatClient
+ * ============================================================================
+ *
+ * Cliente de chat interactivo que se conecta al BUS de mensajería y permite:
+ * - Conectarse al BUS de comunicación
+ * - Registrarse en el servicio de mensajería
+ * - Ver usuarios online
+ * - Enviar y recibir mensajes en tiempo real
+ * - Manejar eventos de presencia y typing
+ * - Persistir mensajes en MongoDB a través del servicio
+ *
+ * @property userId ID único del usuario en la base de datos
+ * @property username Nombre de usuario para mostrar
+ * @property busHost Dirección del BUS (default: 127.0.0.1)
+ * @property busPort Puerto del BUS (default: 5000)
+ */
 class InteractiveChatClient(
     val userId: String,
     val username: String,
-    private val busHost: String = "localhost",
+    private val busHost: String = "127.0.0.1",
     private val busPort: Int = 5000
 ) {
+    // Socket de conexión con el BUS
     private var socket: Socket? = null
+
+    // ID único de esta sesión de cliente
     private val clientId = "chat_${UUID.randomUUID().toString().take(8)}"
+
+    // Flag que indica si el cliente está activo
     var running = false
         private set
-    private val events = mutableListOf<Map<String, Any>>()
+
+    // Lista de eventos recibidos (accesible para el ViewModel)
+    val events = mutableListOf<Map<String, Any>>()
+    private val eventsLock = ReentrantLock()
+
+    /**
+     * clearEvents: Limpia la lista de eventos acumulados
+     *
+     * Debe llamarse al abrir un nuevo chat para evitar procesar eventos antiguos
+     * de conversaciones anteriores
+     */
+    fun clearEvents() {
+        eventsLock.lock()
+        try {
+            events.clear()
+            android.util.Log.d("ChatClient", "🧹 Eventos limpiados")
+        } finally {
+            eventsLock.unlock()
+        }
+    }
+
+    /**
+     * getEventsCount: Obtiene el número actual de eventos
+     *
+     * Útil para que el listener sepa desde dónde empezar a leer eventos nuevos
+     */
+    fun getEventsCount(): Int {
+        eventsLock.lock()
+        try {
+            return events.size
+        } finally {
+            eventsLock.unlock()
+        }
+    }
+
+    // Cola de respuestas pendientes de procesar
     private val responseQueue = mutableListOf<Map<String, Any>>()
     private val queueLock = ReentrantLock()
+
+    // Historial de mensajes de la conversación actual
     val conversationHistory = mutableListOf<Map<String, Any>>()
+
+    // Información del otro usuario en el chat actual
     var otherUserId: String? = null
     var otherUsername: String? = null
     var otherClientId: String? = null
     private var isOtherTyping = false
 
-    // Lista de usuarios conectados
-    private val onlineUsers = ConcurrentHashMap<String, UserInfo>() // client_id -> UserInfo
+    // Variables temporales para gestión del chat actual
+    // Se usan para rastrear el último mensaje y evitar duplicados
+    var currentChatSenderId: String? = null
+    var currentChatReceiverId: String? = null
+    var lastMessageTimestamp: String? = null
+
+    // Lista de usuarios conectados al sistema
+    private val onlineUsers = ConcurrentHashMap<String, UserInfo>()
     private val usersLock = ReentrantLock()
 
     private val gson = Gson()
 
+    /**
+     * connect: Establece conexión con el BUS y registra el cliente
+     * @return true si la conexión fue exitosa, false en caso contrario
+     *
+     * Proceso de conexión:
+     * 1. Crea el socket TCP al BUS
+     * 2. Envía mensaje REGISTER con el tipo "client"
+     * 3. Espera confirmación REGISTER_ACK
+     * 4. Inicia el listener de eventos en un thread separado
+     * 5. Se conecta al servicio de mensajería
+     * 6. Broadcast de presencia para que otros usuarios lo vean
+     */
     fun connect(): Boolean {
         println("\n🔌 Conectando al BUS en $busHost:$busPort...")
         android.util.Log.d("ChatClient", "=== INICIANDO CONNECT ===")
@@ -122,7 +287,9 @@ class InteractiveChatClient(
 
         return try {
             android.util.Log.d("ChatClient", "Paso 1: Creando socket...")
-            socket = Socket(busHost, busPort)
+            // Usar connect con timeout para evitar bloqueos indefinidos
+            socket = Socket()
+            socket?.connect(InetSocketAddress(busHost, busPort), 10000) // 10s timeout
             android.util.Log.d("ChatClient", "✅ Socket creado exitosamente")
             android.util.Log.d("ChatClient", "Socket conectado: ${socket?.isConnected}")
             android.util.Log.d("ChatClient", "Socket cerrado: ${socket?.isClosed}")
@@ -187,9 +354,14 @@ class InteractiveChatClient(
         }
     }
 
+    /**
+     * broadcastMyPresence: Envía un mensaje BROADCAST con la presencia del usuario
+     *
+     * Notifica a todos los clientes conectados que este usuario está online
+     * Incluye: client_id, user_id y username
+     */
     fun broadcastMyPresence() {
         try {
-            // Enviar `client_id` también a nivel superior para compatibilidad
             sendJsonLine(socket!!, mapOf(
                 "type" to "BROADCAST",
                 "event" to "user_presence",
@@ -205,6 +377,17 @@ class InteractiveChatClient(
         }
     }
 
+    /**
+     * listenEvents: Hilo que escucha continuamente mensajes del BUS
+     *
+     * Este método corre en un thread separado y procesa:
+     * - Mensajes BROADCAST (presencia de usuarios, notificaciones globales)
+     * - Mensajes DIRECT (mensajes privados, eventos específicos)
+     * - Respuestas a peticiones REQUEST
+     *
+     * Los mensajes DIRECT con eventos se agregan a la lista 'events'
+     * Las respuestas a REQUEST se agregan a 'responseQueue' para procesamiento
+     */
     private fun listenEvents() {
         val reader = socket?.getInputStream()?.bufferedReader()
         while (running) {
@@ -259,6 +442,15 @@ class InteractiveChatClient(
         }
     }
 
+    /**
+     * handleBroadcast: Procesa mensajes BROADCAST recibidos
+     * @param msg Mapa con el mensaje BROADCAST
+     *
+     * Maneja eventos:
+     * - user_joined: Nuevo usuario conectado (respondemos con nuestra presencia)
+     * - user_left: Usuario desconectado (lo removemos de la lista)
+     * - user_presence: Presencia de un usuario (lo agregamos a la lista)
+     */
     private fun handleBroadcast(msg: Map<String, Any>) {
         // Extraer `data` y permitir que `client_id`, `user_id` y `username` vengan
         // ya sea a nivel superior o dentro de `data`.
@@ -313,6 +505,16 @@ class InteractiveChatClient(
         }
     }
 
+    /**
+     * handleEvent: Procesa eventos DIRECT específicos del chat
+     * @param event Nombre del evento
+     * @param data Datos asociados al evento
+     *
+     * Maneja:
+     * - new_message: Nuevo mensaje recibido (lo agrega al historial)
+     * - user_typing: Usuario está escribiendo (actualiza flag)
+     * - message_read: Mensaje fue leído (muestra confirmación)
+     */
     private fun handleEvent(event: String, data: Map<String, Any>) {
         when (event) {
             "new_message" -> {
@@ -351,6 +553,16 @@ class InteractiveChatClient(
         }
     }
 
+    /**
+     * waitForResponse: Espera una respuesta con un correlationId específico
+     * @param correlationId ID de correlación del request
+     * @param timeout Tiempo máximo de espera en segundos
+     * @return Mapa con la respuesta recibida
+     * @throws TimeoutException si no se recibe respuesta en el tiempo especificado
+     *
+     * Busca en responseQueue un mensaje que coincida con el correlationId
+     * y lo retorna, removiéndolo de la cola
+     */
     private fun waitForResponse(correlationId: String, timeout: Double = 5.0): Map<String, Any> {
         val start = System.currentTimeMillis()
 
@@ -376,6 +588,16 @@ class InteractiveChatClient(
         throw TimeoutException("No se recibió respuesta en el tiempo esperado")
     }
 
+    /**
+     * sendAction: Envía una acción al servicio de mensajería y espera respuesta
+     * @param action Nombre de la acción (send, getConversation, connect, etc.)
+     * @param payload Datos adicionales de la acción
+     * @param optional Si es true, no lanza excepción en caso de timeout
+     * @return Mapa con el payload de la respuesta
+     *
+     * Crea un REQUEST con correlationId único, lo envía al servicio "Mensajeria"
+     * y espera la respuesta correspondiente usando waitForResponse
+     */
     private fun sendAction(action: String, payload: Map<String, Any>, optional: Boolean = false): Map<String, Any> {
         val correlationId = UUID.randomUUID().toString()
 
@@ -405,6 +627,20 @@ class InteractiveChatClient(
         }
     }
 
+    /**
+     * sendMessage: Envía un mensaje a otro usuario
+     * @param receiverId ID del usuario destinatario
+     * @param message Texto del mensaje
+     * @return true si el mensaje se envió correctamente
+     *
+     * Envía la acción "send" al servicio de mensajería con:
+     * - senderObjId: ID del remitente
+     * - receiverObjId: ID del destinatario
+     * - message: Texto del mensaje
+     *
+     * El mensaje se persiste en MongoDB a través del servicio
+     * NO lo agrega al historial local (lo hace MessageViewModel para evitar duplicados)
+     */
     fun sendMessage(receiverId: String, message: String): Boolean {
         return try {
             val payload = sendAction("send", mapOf(
@@ -414,13 +650,8 @@ class InteractiveChatClient(
             ))
 
             if (payload["ok"] == true) {
-                // Guardar en historial
-                conversationHistory.add(mapOf(
-                    "from" to userId,
-                    "text" to message,
-                    "timestamp" to (payload["timestamp"]?.toString() ?: ""),
-                    "direction" to "sent"
-                ))
+                // NO agregar al historial aquí - MessageViewModel ya lo maneja
+                // Esto evita duplicados al recargar desde MongoDB
                 true
             } else {
                 println("\n❌ Error: ${payload["error"]}")
@@ -432,6 +663,17 @@ class InteractiveChatClient(
         }
     }
 
+    /**
+     * getConversation: Obtiene el historial de conversación con otro usuario
+     * @param otherUserId ID del otro usuario
+     * @return Lista de mensajes de la conversación desde MongoDB
+     *
+     * Solicita al servicio de mensajería los últimos 50 mensajes entre
+     * el usuario actual y el otro usuario especificado
+     *
+     * NO los agrega al historial local - solo los retorna
+     * MessageViewModel se encarga de manejarlos y evitar duplicados
+     */
     fun getConversation(otherUserId: String): List<Map<String, Any>> {
         return try {
             val payload = sendAction("getConversation", mapOf(
@@ -443,15 +685,8 @@ class InteractiveChatClient(
             if (payload["ok"] == true) {
                 @Suppress("UNCHECKED_CAST")
                 val messages = payload["messages"] as? List<Map<String, Any>> ?: emptyList()
-                // Cargar historial
-                for (msg in messages) {
-                    conversationHistory.add(mapOf(
-                        "from" to (msg["from"] as? String ?: ""),
-                        "text" to (msg["text"] as? String ?: ""),
-                        "timestamp" to (msg["ts"] as? String ?: ""),
-                        "direction" to if (msg["from"] == userId) "sent" else "received"
-                    ))
-                }
+                // NO agregar al historial aquí - MessageViewModel ya lo maneja
+                // Esto evita duplicados al recargar desde MongoDB
                 messages
             } else {
                 emptyList()
@@ -461,6 +696,44 @@ class InteractiveChatClient(
         }
     }
 
+    /**
+     * getMessagesSince: Obtiene mensajes nuevos desde un timestamp específico
+     * @param timestamp Timestamp ISO 8601 desde el cual obtener mensajes
+     * @return Lista de mensajes posteriores al timestamp
+     *
+     * Útil para obtener solo mensajes nuevos sin cargar toda la conversación
+     * Los agrega al historial local de conversationHistory
+     */
+    fun getMessagesSince(timestamp: String): List<Map<String, Any>> {
+        return try {
+            val payload = sendAction("getMessagesSince", mapOf(
+                "userId" to userId,
+                "timestamp" to timestamp,
+                "limit" to 50
+            ))
+
+            if (payload["ok"] == true) {
+                @Suppress("UNCHECKED_CAST")
+                val messages = payload["messages"] as? List<Map<String, Any>> ?: emptyList()
+                // Agregar al historial solo los mensajes nuevos
+                conversationHistory.addAll(messages)
+                messages
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * setTyping: Notifica al otro usuario que estamos escribiendo
+     * @param conversationId ID de la conversación
+     * @param isTyping true si está escribiendo, false si dejó de escribir
+     *
+     * Envía la acción "typing" al servicio de mensajería
+     * Es opcional, no lanza excepciones si falla
+     */
     @Suppress("unused")
     fun setTyping(conversationId: String, isTyping: Boolean) {
         try {
@@ -474,6 +747,12 @@ class InteractiveChatClient(
         }
     }
 
+    /**
+     * getOnlineUsersList: Obtiene la lista de usuarios online
+     * @return Lista de pares (client_id, UserInfo)
+     *
+     * Thread-safe: usa lock para acceder a onlineUsers
+     */
     fun getOnlineUsersList(): List<Pair<String, UserInfo>> {
         usersLock.lock()
         try {
@@ -483,6 +762,15 @@ class InteractiveChatClient(
         }
     }
 
+    /**
+     * showConversationSummary: Muestra el historial de conversación en consola
+     *
+     * Imprime todos los mensajes del historial con formato:
+     * - Dirección (➡️ enviado, ⬅️ recibido)
+     * - Remitente
+     * - Timestamp
+     * - Texto del mensaje
+     */
     fun showConversationSummary() {
         println("\n" + "=".repeat(80))
         println("📜 HISTORIAL DE CONVERSACIÓN - $username")
@@ -504,6 +792,12 @@ class InteractiveChatClient(
         println("=".repeat(80))
     }
 
+    /**
+     * heartbeat: Envía un ping al servicio para mantener la conexión viva
+     *
+     * Se debe llamar periódicamente (cada 30 segundos recomendado)
+     * Es opcional, no lanza excepciones si falla
+     */
     fun heartbeat() {
         try {
             sendAction("heartbeat", mapOf("userId" to userId), optional = true)
@@ -512,6 +806,13 @@ class InteractiveChatClient(
         }
     }
 
+    /**
+     * disconnect: Desconecta el cliente del BUS
+     *
+     * 1. Marca running = false para detener el listener
+     * 2. Envía acción "disconnect" al servicio
+     * 3. Cierra el socket
+     */
     fun disconnect() {
         running = false
         socket?.let { sock ->
@@ -526,6 +827,16 @@ class InteractiveChatClient(
     }
 }
 
+/**
+ * ============================================================================
+ * FUNCIONES DE UTILIDAD PARA CONSOLA
+ * ============================================================================
+ */
+
+/**
+ * clearScreen: Limpia la pantalla de la consola
+ * Detecta el sistema operativo y ejecuta el comando apropiado
+ */
 fun clearScreen() {
     if (System.getProperty("os.name")?.contains("Windows") == true) {
         ProcessBuilder("cmd", "/c", "cls").inheritIO().start().waitFor()
@@ -535,6 +846,18 @@ fun clearScreen() {
     }
 }
 
+/**
+ * showUserMenu: Muestra un menú interactivo para seleccionar con quién chatear
+ * @param client Cliente de chat
+ * @return Mapa con client_id, user_id y username del usuario seleccionado, o null si cancela
+ *
+ * Muestra la lista de usuarios online y permite:
+ * - Seleccionar un usuario por número
+ * - Actualizar la lista (0)
+ * - Salir (Q)
+ *
+ * Si no hay usuarios, espera 5 segundos y actualiza automáticamente
+ */
 fun showUserMenu(client: InteractiveChatClient): Map<String, String>? {
     while (client.running) {
         clearScreen()
@@ -595,6 +918,18 @@ fun showUserMenu(client: InteractiveChatClient): Map<String, String>? {
     return null
 }
 
+/**
+ * chatLoop: Bucle principal de chat con otro usuario
+ * @param client Cliente de chat
+ * @param otherUser Mapa con client_id, user_id y username del otro usuario
+ * @return true si se debe volver al menú de usuarios, false si se sale completamente
+ *
+ * 1. Establece el otro usuario en el cliente
+ * 2. Limpia y carga el historial de conversación
+ * 3. Muestra el encabezado del chat
+ * 4. Entra en un bucle para leer y enviar mensajes
+ * 5. Permite salir al menú con el comando '/menu'
+ */
 fun chatLoop(client: InteractiveChatClient, otherUser: Map<String, String>): Boolean {
     client.otherClientId = otherUser["client_id"]
     client.otherUserId = otherUser["user_id"]
@@ -650,6 +985,16 @@ fun chatLoop(client: InteractiveChatClient, otherUser: Map<String, String>): Boo
     }
 }
 
+/**
+ * main: Función principal del programa
+ *
+ * 1. Muestra el encabezado del chat interactivo
+ * 2. Pide y establece el username y userId del cliente
+ * 3. Crea el cliente de chat y se conecta al BUS
+ * 4. Inicia los threads de heartbeat y broadcast de presencia
+ * 5. Entra en un bucle para mostrar el menú de usuarios y manejar chats
+ * 6. Al salir, muestra el resumen de conversación y desconecta el cliente
+ */
 fun main() {
     println("=".repeat(80))
     println("💬 CHAT INTERACTIVO - Servicio de Mensajería")

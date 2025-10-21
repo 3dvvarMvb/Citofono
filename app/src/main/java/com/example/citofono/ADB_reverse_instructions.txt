@@ -1,0 +1,18 @@
+# Verificar dispositivos conectados
+adb devices
+
+# Deberías ver algo como:
+# List of devices attached
+# adb-PNYL5H8L8LSK9L9H-kJNVz5._adb-tls-connect._tcp	device
+
+
+# En otra terminal
+netstat -tuln | grep 5000
+
+# Deberías ver:
+# tcp        0      0 0.0.0.0:5000            0.0.0.0:*               LISTEN
+
+
+# Activar ADB reverse desde la raíz del proyecto Android
+chmod +x ./scripts/adb_tunnel.sh
+./scripts/adb_tunnel.sh
