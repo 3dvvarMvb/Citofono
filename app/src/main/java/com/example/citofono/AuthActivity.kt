@@ -8,12 +8,17 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.citofono.ui.theme.CitofonoTheme
 import kotlinx.coroutines.launch
@@ -29,6 +34,7 @@ class AuthActivity : ComponentActivity() {
                 var password by remember { mutableStateOf("") }
                 var error by remember { mutableStateOf("") }
                 var busy by remember { mutableStateOf(false) }
+                var passwordVisible by remember { mutableStateOf(false) }
                 // Autologin si hay sesión válida
                 LaunchedEffect(Unit) {
                     val skip = intent.getBooleanExtra("skip_auto_login", false)
@@ -73,15 +79,37 @@ class AuthActivity : ComponentActivity() {
                         OutlinedTextField(
                             value = username, onValueChange = { username = it },
                             label = { Text("Usuario", color = customColor) },
-                            singleLine = true, modifier = Modifier.fillMaxWidth().height(64.dp)
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().height(64.dp),
+                            colors = TextFieldDefaults.outlinedTextFieldColors(
+                                textColor = customColor,
+                                cursorColor = customColor,
+                                focusedBorderColor = customColor,
+                                unfocusedBorderColor = customColor.copy(alpha = 0.5f)
+                            )
                         )
                         Spacer(Modifier.height(8.dp))
                         OutlinedTextField(
                             value = password, onValueChange = { password = it },
                             label = { Text("Contraseña", color = customColor) },
                             singleLine = true,
-                            visualTransformation = PasswordVisualTransformation(),
-                            modifier = Modifier.fillMaxWidth().height(64.dp)
+                            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                            trailingIcon = {
+                                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                    Icon(
+                                        imageVector = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                        contentDescription = if (passwordVisible) "Ocultar contraseña" else "Mostrar contraseña",
+                                        tint = customColor
+                                    )
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(64.dp),
+                            colors = TextFieldDefaults.outlinedTextFieldColors(
+                                textColor = customColor,
+                                cursorColor = customColor,
+                                focusedBorderColor = customColor,
+                                unfocusedBorderColor = customColor.copy(alpha = 0.5f)
+                            )
                         )
                         Spacer(Modifier.height(12.dp))
                         Button(
@@ -99,9 +127,13 @@ class AuthActivity : ComponentActivity() {
                                             val sid = resp.optString("session_id", "").ifBlank { resp.optString("token", "") }
                                             val role = resp.optString("role", resp.optString("userType", "user"))
                                             val user = resp.optString("username", resp.optString("userId", username))
+                                            // Extraer el ObjectId del usuario (puede venir como userId, user_id, _id, etc.)
+                                            val userId = resp.optString("userId", "")
+                                                .ifBlank { resp.optString("user_id", "") }
+                                                .ifBlank { resp.optString("_id", "") }
 
                                             if ((status.equals("ok", true) || status.equals("authenticated", true)) && sid.isNotBlank()) {
-                                                SessionManager.save(this@AuthActivity, sid, user, role)
+                                                SessionManager.save(this@AuthActivity, sid, user, role, userId)
                                                 goToByRole(role)
                                             } else {
                                                 error = if (resp.optString("message").isNotBlank())
@@ -146,3 +178,209 @@ class AuthActivity : ComponentActivity() {
         Toast.makeText(this, "Sesión iniciada como $role", Toast.LENGTH_SHORT).show()
     }
 }
+
+// ========== PREVIEWS ==========
+
+@Preview(showBackground = true, name = "Login Screen")
+@Composable
+private fun AuthScreenPreview() {
+    CitofonoTheme {
+        var username by remember { mutableStateOf("") }
+        var password by remember { mutableStateOf("") }
+        var error by remember { mutableStateOf("") }
+        var passwordVisible by remember { mutableStateOf(false) }
+
+        Box(Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text("Autenticación", style = MaterialTheme.typography.h3, color = customColor)
+                Spacer(Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = username, onValueChange = { username = it },
+                    label = { Text("Usuario", color = customColor) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().height(64.dp),
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        textColor = customColor,
+                        cursorColor = customColor,
+                        focusedBorderColor = customColor,
+                        unfocusedBorderColor = customColor.copy(alpha = 0.5f)
+                    )
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = password, onValueChange = { password = it },
+                    label = { Text("Contraseña", color = customColor) },
+                    singleLine = true,
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                imageVector = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                contentDescription = if (passwordVisible) "Ocultar contraseña" else "Mostrar contraseña",
+                                tint = customColor
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(64.dp),
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        textColor = customColor,
+                        cursorColor = customColor,
+                        focusedBorderColor = customColor,
+                        unfocusedBorderColor = customColor.copy(alpha = 0.5f)
+                    )
+                )
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = { },
+                    modifier = Modifier.fillMaxWidth().height(64.dp),
+                    colors = ButtonDefaults.buttonColors(backgroundColor = customColor2)
+                ) { Text("Ingresar", color = customColor) }
+
+                if (error.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(error, color = MaterialTheme.colors.error)
+                }
+            }
+        }
+    }
+}
+
+@Preview(showBackground = true, name = "Login Screen With Error")
+@Composable
+private fun AuthScreenWithErrorPreview() {
+    CitofonoTheme {
+        var username by remember { mutableStateOf("usuario123") }
+        var password by remember { mutableStateOf("********") }
+        val error = "Credenciales inválidas"
+        var passwordVisible by remember { mutableStateOf(false) }
+
+        Box(Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text("Autenticación", style = MaterialTheme.typography.h3, color = customColor)
+                Spacer(Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = username, onValueChange = { username = it },
+                    label = { Text("Usuario", color = customColor) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().height(64.dp),
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        textColor = customColor,
+                        cursorColor = customColor,
+                        focusedBorderColor = customColor,
+                        unfocusedBorderColor = customColor.copy(alpha = 0.5f)
+                    )
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = password, onValueChange = { password = it },
+                    label = { Text("Contraseña", color = customColor) },
+                    singleLine = true,
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                imageVector = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                contentDescription = if (passwordVisible) "Ocultar contraseña" else "Mostrar contraseña",
+                                tint = customColor
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(64.dp),
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        textColor = customColor,
+                        cursorColor = customColor,
+                        focusedBorderColor = customColor,
+                        unfocusedBorderColor = customColor.copy(alpha = 0.5f)
+                    )
+                )
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = { },
+                    modifier = Modifier.fillMaxWidth().height(64.dp),
+                    colors = ButtonDefaults.buttonColors(backgroundColor = customColor2)
+                ) { Text("Ingresar", color = customColor) }
+
+                if (error.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(error, color = MaterialTheme.colors.error)
+                }
+            }
+        }
+    }
+}
+
+@Preview(showBackground = true, name = "Login Loading State")
+@Composable
+private fun AuthScreenLoadingPreview() {
+    CitofonoTheme {
+        var username by remember { mutableStateOf("usuario123") }
+        var password by remember { mutableStateOf("********") }
+        var passwordVisible by remember { mutableStateOf(false) }
+
+        Box(Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text("Autenticación", style = MaterialTheme.typography.h3, color = customColor)
+                Spacer(Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = username, onValueChange = { username = it },
+                    label = { Text("Usuario", color = customColor) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().height(64.dp),
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        textColor = customColor,
+                        cursorColor = customColor,
+                        focusedBorderColor = customColor,
+                        unfocusedBorderColor = customColor.copy(alpha = 0.5f)
+                    )
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = password, onValueChange = { password = it },
+                    label = { Text("Contraseña", color = customColor) },
+                    singleLine = true,
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                imageVector = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                contentDescription = if (passwordVisible) "Ocultar contraseña" else "Mostrar contraseña",
+                                tint = customColor
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(64.dp),
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        textColor = customColor,
+                        cursorColor = customColor,
+                        focusedBorderColor = customColor,
+                        unfocusedBorderColor = customColor.copy(alpha = 0.5f)
+                    )
+                )
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = { },
+                    modifier = Modifier.fillMaxWidth().height(64.dp),
+                    colors = ButtonDefaults.buttonColors(backgroundColor = customColor2)
+                ) { Text("Ingresar", color = customColor) }
+            }
+
+            // Loading overlay
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        }
+    }
+}
+

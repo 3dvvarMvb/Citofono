@@ -13,12 +13,14 @@ object SessionManager {
     private const val K_SESSION = "session_id"
     private const val K_ROLE = "role"
     private const val K_USER = "username"
+    private const val K_USER_ID = "user_id" // ObjectId del usuario en MongoDB
 
-    fun save(ctx: Context, sessionId: String, username: String, role: String) {
+    fun save(ctx: Context, sessionId: String, username: String, role: String, userId: String = "") {
         ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
             .putString(K_SESSION, sessionId)
             .putString(K_ROLE, role)
             .putString(K_USER, username)
+            .putString(K_USER_ID, userId)
             .apply()
     }
     fun clear(ctx: Context) {
@@ -27,6 +29,7 @@ object SessionManager {
     fun sessionId(ctx: Context) = ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).getString(K_SESSION, "") ?: ""
     fun role(ctx: Context) = ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).getString(K_ROLE, "user") ?: "user"
     fun username(ctx: Context) = ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).getString(K_USER, "") ?: ""
+    fun userId(ctx: Context) = ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).getString(K_USER_ID, "") ?: ""
     fun isLoggedIn(ctx: Context) = sessionId(ctx).isNotBlank()
 
     /** Cierra sesión local + pide logout al backend y va a AuthActivity sin autologin. */

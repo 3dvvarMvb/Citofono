@@ -13,8 +13,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+
 
 // ----------------- UI: Teclado -----------------
 @Composable
@@ -228,3 +230,28 @@ fun SearchScreen(
         }
     }
 }
+
+// ==================== PREVIEWS ====================
+
+@Preview(showBackground = true, name = "Teclado Numérico")
+@Composable
+fun NumericKeyboardPreview() {
+    MaterialTheme {
+        NumericKeyboard(onKeyClick = {})
+    }
+}
+
+@Preview(showBackground = true, name = "Pantalla de Búsqueda")
+@Composable
+fun SearchScreenPreview() {
+    MaterialTheme {
+        SearchScreen(
+            searchQuery = "802D",
+            onSearchQueryChange = {},
+            resolveDepto = { null },
+            onCallClick = { _, _ -> }
+        )
+    }
+}
+
+

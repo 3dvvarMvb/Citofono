@@ -69,7 +69,6 @@ dependencies {
     implementation("androidx.compose.runtime:runtime")
 
     implementation(libs.androidx.material3)
-    implementation(libs.androidx.material)
 
     implementation(libs.androidx.lifecycle.viewmodel.compose)
 
@@ -134,12 +133,7 @@ tasks.register<Exec>("setupAdbTunnel") {
     commandLine("bash", "${rootProject.projectDir}/scripts/adb_tunnel.sh")
 
 }
-    // Usar el output del compilador para el source set `debug`
-    val debugClassesDir = layout.buildDirectory.dir("tmp/kotlin-classes/debug").get().asFile
-    // En un módulo Android la configuración se llama 'debugRuntimeClasspath'
-    classpath = files(debugClassesDir) + configurations.getByName("debugRuntimeClasspath")
 
-    mainClass.set("com.example.citofono.ChatInteractiveKt")
 
 // Asegurar que al ejecutar runChat primero configure el túnel adb
 tasks.named("runChat") {

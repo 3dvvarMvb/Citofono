@@ -18,7 +18,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.citofono.ui.theme.CitofonoTheme
@@ -36,12 +35,12 @@ class ChatsActivity : ComponentActivity() {
 
         Log.d(TAG, "=== ChatsActivity onCreate INICIADO ===")
 
-        // Obtener datos del usuario (por ahora hardcoded, luego desde login)
-        val userId = ObjectId().toString() // Generar o recuperar del login
-        val username = "Usuario_Android" // Recuperar del login
+        // Obtener datos del usuario desde el Intent
+        val userId = intent.getStringExtra("USER_ID") ?: ObjectId().toString()
+        val username = intent.getStringExtra("USERNAME") ?: "Usuario_Android"
 
-        Log.d(TAG, "userId generado: $userId")
-        Log.d(TAG, "username: $username")
+        Log.d(TAG, "userId recibido: $userId")
+        Log.d(TAG, "username recibido: $username")
 
         // Conectar al servicio de chat
         Log.d(TAG, "Llamando a chatViewModel.connect()...")
@@ -57,8 +56,13 @@ class ChatsActivity : ComponentActivity() {
                     onlineUsers = onlineUsers,
                     connectionState = connectionState,
                     onBackPressed = {
-                        Log.d(TAG, "Usuario presionó botón atrás")
+                        Log.d(TAG, "Usuario presionó botón atrás - desconectando del chat")
                         chatViewModel.disconnect()
+                        // Volver a MainActivity con el marcador abierto
+                        val intent = Intent(this@ChatsActivity, MainActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                        }
+                        startActivity(intent)
                         finish()
                     },
                     onContactClick = { user ->
@@ -66,6 +70,21 @@ class ChatsActivity : ComponentActivity() {
                         Log.d(TAG, "  - username: ${user.username}")
                         Log.d(TAG, "  - userId: ${user.userId}")
                         Log.d(TAG, "  - clientId: ${user.clientId}")
+
+                        // Verificar que el cliente esté conectado antes de abrir MessageActivity
+                        val chatClient = ChatClientManager.getChatClient()
+                        if (chatClient == null) {
+                            Log.e(TAG, "❌ ERROR: ChatClient es NULL - no se puede abrir MessageActivity")
+                            Log.e(TAG, "Esto NO debería ocurrir si connectionState es Connected")
+                            return@ChatsScreen
+                        }
+
+                        if (!chatClient.running) {
+                            Log.e(TAG, "❌ ERROR: ChatClient no está running - no se puede abrir MessageActivity")
+                            return@ChatsScreen
+                        }
+
+                        Log.d(TAG, "✅ ChatClient verificado - userId: ${chatClient.userId}, running: ${chatClient.running}")
 
                         // Navigate to MessageActivity
                         val intent = Intent(this, MessageActivity::class.java).apply {
@@ -87,8 +106,10 @@ class ChatsActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        Log.d(TAG, "onDestroy() - desconectando...")
-        chatViewModel.disconnect()
+        Log.d(TAG, "onDestroy() llamado - NO desconectamos el cliente aquí")
+        Log.d(TAG, "El cliente permanecerá activo para MessageActivity")
+        // NO llamar a disconnect() aquí porque MessageActivity necesita el cliente
+        // El cliente solo se desconecta cuando el usuario presiona "Volver" o cierra sesión
     }
 }
 
@@ -270,6 +291,28 @@ fun ChatsScreenPreview() {
             connectionState = ConnectionState.Connected,
             onBackPressed = {},
             onContactClick = {}
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Usuario Online Item")
+@Composable
+fun OnlineUserListItemPreview() {
+    CitofonoTheme {
+        OnlineUserListItem(
+            user = ChatUser("client_1", "507f1f77bcf86cd799439011", "Laura García"),
+            onClick = {}
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Contact List Item")
+@Composable
+fun ContactListItemPreview() {
+    CitofonoTheme {
+        ContactListItem(
+            contact = Contact1("Juan Pérez"),
+            onClick = {}
         )
     }
 }

@@ -410,3 +410,33 @@ fun MessageScreenPreview() {
         )
     }
 }
+
+@Preview(showBackground = true, name = "Burbuja de Mensaje Enviado")
+@Composable
+fun MessageBubbleSentPreview() {
+    _root_ide_package_.com.example.citofono.ui.theme.CitofonoTheme {
+        MessageBubble(
+            message = ChatMessage(
+                text = "Este es un mensaje enviado por mí",
+                isSent = true,
+                timestamp = System.currentTimeMillis(),
+                deliveryStatus = "delivered"
+            )
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Burbuja de Mensaje Recibido")
+@Composable
+fun MessageBubbleReceivedPreview() {
+    _root_ide_package_.com.example.citofono.ui.theme.CitofonoTheme {
+        MessageBubble(
+            message = ChatMessage(
+                text = "Este es un mensaje recibido de otra persona",
+                isSent = false,
+                timestamp = System.currentTimeMillis()
+            )
+        )
+    }
+}
+

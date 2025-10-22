@@ -20,7 +20,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -36,6 +39,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.citofono.ui.theme.CitofonoTheme
@@ -47,6 +51,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+
 
 // Paleta (reutilizada por AuthActivity)
 val customColor = Color(red = 250, green = 244, blue = 226, alpha = 255)
@@ -77,15 +82,20 @@ class AdminActivity : ComponentActivity() {
                     topBar = {
                         TopAppBar(
                             title = { Text("Consola Administrador") },
+                            backgroundColor = customColor2,
+                            contentColor = Color.White,
                             actions = {
                                 TextButton(onClick = {
                                     SessionManager.logoutAndGoToLogin(this@AdminActivity)
-                                }) { Text("Salir", color = Color.White) }
+                                }) { Text("Salir", color = customColor) }
                             }
                         )
                     },
                     bottomBar = {
-                        BottomNavigation {
+                        BottomNavigation(
+                            backgroundColor = customColor2,
+                            contentColor = Color.White
+                        ) {
                             listOf(
                                 AdminSection.ImportExport,
                                 AdminSection.RegLlamadas,
@@ -96,7 +106,9 @@ class AdminActivity : ComponentActivity() {
                                     icon = { Icon(item.icon, contentDescription = item.label) },
                                     label = { Text(item.label, fontSize = 11.sp) },
                                     selected = section::class == item::class,
-                                    onClick = { section = item }
+                                    onClick = { section = item },
+                                    selectedContentColor = Color.White,
+                                    unselectedContentColor = Color.White.copy(alpha = 0.6f)
                                 )
                             }
                         }
@@ -284,7 +296,7 @@ private fun ImportExportScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Top
         ) {
-            Text("Gestión de Contactos", style = MaterialTheme.typography.h6)
+            Text("Gestión de Contactos", style = MaterialTheme.typography.h6, color = customColor)
 
             Spacer(Modifier.height(12.dp))
 
@@ -338,29 +350,76 @@ private fun RegistroLlamadasScreen() {
     var range by remember { mutableStateOf("HOY") }       // HOY / SEMANA / TODO
     var busy by remember { mutableStateOf(false) }
 
+    var allItems by remember { mutableStateOf(listOf<CallLog>()) }
     var items by remember { mutableStateOf(listOf<CallLog>()) }
 
-    // Carga inicial y al cambiar filtros
-    LaunchedEffect(q, range) {
+    // Carga inicial
+    LaunchedEffect(Unit) {
         busy = true
-        val (from, to) = when (range) {
-            "HOY" -> dayBounds(System.currentTimeMillis())
-            "SEMANA" -> weekBounds(System.currentTimeMillis())
-            else -> 0L to System.currentTimeMillis()
-        }
         runCatching {
+            // Cargar todas las llamadas sin filtro de fecha (últimos 30 días para no saturar)
+            val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
             EsbApi.callsList(
-                query = q.trim().ifBlank { null },
-                fromMillis = from.takeIf { it > 0 },
-                toMillis = to,
-                limit = 500
+                query = null,
+                fromMillis = thirtyDaysAgo,
+                toMillis = System.currentTimeMillis(),
+                limit = 1000
             )
-        }.onSuccess { items = it }
+        }.onSuccess { allItems = it }
          .onFailure {
              Toast.makeText(ctx, "No se pudo cargar: ${it.message}", Toast.LENGTH_LONG).show()
-             items = emptyList()
+             allItems = emptyList()
          }
         busy = false
+    }
+
+    // Filtrar localmente cuando cambian los filtros
+    LaunchedEffect(q, range, allItems) {
+        // Obtener la fecha/hora actual en la zona horaria local
+        val now = System.currentTimeMillis()
+        val (from, to) = when (range) {
+            "HOY" -> dayBounds(now)
+            "SEMANA" -> weekBounds(now)
+            else -> 0L to Long.MAX_VALUE
+        }
+
+        // Debug: Log para verificar rangos
+        android.util.Log.d("RegistroLlamadas", "Rango: $range")
+        android.util.Log.d("RegistroLlamadas", "From: ${formatDate(from)} ${formatTime(from)} ($from)")
+        android.util.Log.d("RegistroLlamadas", "To: ${formatDate(to)} ${formatTime(to)} ($to)")
+        android.util.Log.d("RegistroLlamadas", "Total items: ${allItems.size}")
+
+        // Filtrar por rango de fecha
+        val filteredByDate = if (range == "TODO") {
+            allItems
+        } else {
+            allItems.filter { call ->
+                val inRange = call.tsMillis in from..to
+                // Debug: Log para las primeras 5 llamadas
+                if (allItems.indexOf(call) < 5) {
+                    android.util.Log.d("RegistroLlamadas",
+                        "Call ${call.id}: ${formatDate(call.tsMillis)} ${formatTime(call.tsMillis)} " +
+                        "(${call.tsMillis}) - In range: $inRange")
+                }
+                inRange
+            }
+        }
+
+        android.util.Log.d("RegistroLlamadas", "Filtered by date: ${filteredByDate.size}")
+
+        // Filtrar por búsqueda de texto
+        items = if (q.isBlank()) {
+            filteredByDate
+        } else {
+            val query = q.trim().lowercase()
+            filteredByDate.filter { call ->
+                call.caller?.lowercase()?.contains(query) == true ||
+                call.depto?.lowercase()?.contains(query) == true ||
+                call.destination?.lowercase()?.contains(query) == true
+            }
+        }
+
+        android.util.Log.d("RegistroLlamadas", "Final items: ${items.size}")
     }
 
     Column(Modifier.fillMaxSize().padding(12.dp)) {
@@ -379,14 +438,15 @@ private fun RegistroLlamadasScreen() {
             IconButton(onClick = {
                 scope.launch {
                     busy = true
-                    val (from, to) = when (range) {
-                        "HOY" -> dayBounds(System.currentTimeMillis())
-                        "SEMANA" -> weekBounds(System.currentTimeMillis())
-                        else -> 0L to System.currentTimeMillis()
-                    }
                     runCatching {
-                        EsbApi.callsList(q.trim().ifBlank { null }, from, to, 500)
-                    }.onSuccess { items = it }
+                        val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
+                        EsbApi.callsList(
+                            query = null,
+                            fromMillis = thirtyDaysAgo,
+                            toMillis = System.currentTimeMillis(),
+                            limit = 1000
+                        )
+                    }.onSuccess { allItems = it }
                      .onFailure {
                          Toast.makeText(ctx, "No se pudo recargar: ${it.message}", Toast.LENGTH_SHORT).show()
                      }
@@ -399,12 +459,12 @@ private fun RegistroLlamadasScreen() {
 
         val tabs = listOf("HOY","SEMANA","TODO")
         var tabIndex by remember { mutableStateOf(tabs.indexOf(range).coerceAtLeast(0)) }
-        TabRow(selectedTabIndex = tabIndex) {
+        TabRow(selectedTabIndex = tabIndex, backgroundColor = customColor2,) {
             tabs.forEachIndexed { idx, label ->
                 Tab(
                     selected = tabIndex == idx,
                     onClick = { tabIndex = idx; range = tabs[idx] },
-                    text = { Text(label) }
+                    text = { Text(label,color=customColor) }
                 )
             }
         }
@@ -495,35 +555,317 @@ private fun colorForStatus(status: String): Color = when (status.lowercase()) {
     else -> Color(0xFF546E7A) // gris
 }
 
+private fun colorForMessageStatus(deliveryStatus: String, readStatus: String): Color = when {
+    readStatus.lowercase() == "leido" -> Color(0xFF2E7D32) // verde - mensaje leído
+    deliveryStatus.lowercase() == "enviado" -> Color(0xFF1976D2) // azul - mensaje enviado pero no leído
+    deliveryStatus.lowercase() == "pendiente" -> Color(0xFFF9A825) // ámbar - pendiente
+    deliveryStatus.lowercase() == "fallido" || deliveryStatus.lowercase() == "error" -> Color(0xFFC62828) // rojo - error
+    else -> Color(0xFF546E7A) // gris - desconocido
+}
+
 private fun dayBounds(nowMs: Long): Pair<Long, Long> {
-    val cal = java.util.Calendar.getInstance().apply { timeInMillis = nowMs }
+    // Obtener la zona horaria del sistema
+    val cal = java.util.Calendar.getInstance(java.util.TimeZone.getDefault()).apply {
+        timeInMillis = nowMs
+    }
+    // Establecer al inicio del día (00:00:00.000)
     cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
     cal.set(java.util.Calendar.MINUTE, 0)
     cal.set(java.util.Calendar.SECOND, 0)
     cal.set(java.util.Calendar.MILLISECOND, 0)
     val start = cal.timeInMillis
-    val end = start + 24L * 3600_000
+
+    // Establecer al final del día (23:59:59.999)
+    cal.set(java.util.Calendar.HOUR_OF_DAY, 23)
+    cal.set(java.util.Calendar.MINUTE, 59)
+    cal.set(java.util.Calendar.SECOND, 59)
+    cal.set(java.util.Calendar.MILLISECOND, 999)
+    val end = cal.timeInMillis
+
     return start to end
 }
 
 private fun weekBounds(nowMs: Long): Pair<Long, Long> {
-    val cal = java.util.Calendar.getInstance().apply { timeInMillis = nowMs }
+    // Obtener la zona horaria del sistema
+    val cal = java.util.Calendar.getInstance(java.util.TimeZone.getDefault()).apply {
+        timeInMillis = nowMs
+    }
+    // Configurar para que la semana empiece en lunes
     cal.firstDayOfWeek = java.util.Calendar.MONDAY
-    cal.set(java.util.Calendar.DAY_OF_WEEK, cal.firstDayOfWeek)
+
+    // Retroceder al lunes de esta semana
+    cal.set(java.util.Calendar.DAY_OF_WEEK, java.util.Calendar.MONDAY)
     cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
     cal.set(java.util.Calendar.MINUTE, 0)
     cal.set(java.util.Calendar.SECOND, 0)
     cal.set(java.util.Calendar.MILLISECOND, 0)
     val start = cal.timeInMillis
-    val end = start + 7L * 24 * 3600_000
+
+    // Avanzar al domingo de esta semana (final del día)
+    cal.add(java.util.Calendar.DAY_OF_YEAR, 6) // +6 días desde lunes = domingo
+    cal.set(java.util.Calendar.HOUR_OF_DAY, 23)
+    cal.set(java.util.Calendar.MINUTE, 59)
+    cal.set(java.util.Calendar.SECOND, 59)
+    cal.set(java.util.Calendar.MILLISECOND, 999)
+    val end = cal.timeInMillis
+
     return start to end
 }
 
 @Composable
 private fun RegistroMensajeriaScreen() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("Registro de mensajería (por implementar)")
+    val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
+
+    // Estado para todos los mensajes sin procesar
+    var allMessages by remember { mutableStateOf<List<MessageRecord>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
+    var errorMsg by remember { mutableStateOf("") }
+
+    // Estado para el chat seleccionado
+    var selectedChat by remember { mutableStateOf<ChatPair?>(null) }
+
+    // Obtener lista de chats únicos (pares de usuarios)
+    val chatPairs = remember(allMessages) {
+        extractUniqueChatPairs(allMessages)
     }
+
+    // Cargar mensajes al inicio
+    LaunchedEffect(Unit) {
+        loading = true
+        errorMsg = ""
+        scope.launch {
+            runCatching { EsbApi.messagesList(limit = 1000) }
+                .onSuccess { jsonArray ->
+                    val messages = mutableListOf<MessageRecord>()
+                    for (i in 0 until jsonArray.length()) {
+                        val obj = jsonArray.getJSONObject(i)
+
+                        // Parsear la fecha ISO o usar timestamp
+                        val timestamp = if (obj.has("fecha")) {
+                            // Intentar parsear la fecha ISO
+                            try {
+                                val fechaStr = obj.optString("fecha", "")
+                                val formatter = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.getDefault())
+                                formatter.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                                formatter.parse(fechaStr)?.time ?: 0L
+                            } catch (e: Exception) {
+                                obj.optLong("timestamp", 0L)
+                            }
+                        } else {
+                            obj.optLong("timestamp", 0L)
+                        }
+
+                        // Parsear sender y receiver (pueden ser ObjectId strings o usernames)
+                        val senderId = obj.optString("sender", "?")
+                        val receiverId = obj.optString("receiver", "?")
+
+                        messages.add(
+                            MessageRecord(
+                                id = obj.optString("_id", obj.optString("id", "")),
+                                sender = senderId,
+                                receiver = receiverId,
+                                text = obj.optString("mensaje", obj.optString("message", obj.optString("text", ""))),
+                                timestamp = timestamp,
+                                deliveryStatus = obj.optString("deliveryStatus", "unknown"),
+                                readStatus = obj.optString("readStatus", "unknown")
+                            )
+                        )
+                    }
+                    allMessages = messages.sortedBy { it.timestamp }
+                }
+                .onFailure {
+                    errorMsg = "Error al cargar mensajes: ${it.message}"
+                }
+            loading = false
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text("Registro de Mensajería", style = MaterialTheme.typography.h6)
+
+        if (loading) {
+            Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        }
+
+        if (errorMsg.isNotEmpty()) {
+            Text(errorMsg, color = MaterialTheme.colors.error)
+        }
+
+        if (!loading && selectedChat == null) {
+            // Mostrar listado de chats
+            Text(
+                "Chats disponibles (${chatPairs.size})",
+                style = MaterialTheme.typography.subtitle1,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            if (chatPairs.isEmpty() && !loading) {
+                Text("No hay mensajes registrados", color = Color.Gray)
+            }
+
+            chatPairs.forEach { chatPair ->
+                Card(
+                    elevation = 2.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { selectedChat = chatPair }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Chat entre: ${chatPair.user1} ↔ ${chatPair.user2}",
+                                style = MaterialTheme.typography.body1,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "${chatPair.messageCount} mensajes",
+                                style = MaterialTheme.typography.caption,
+                                color = Color.Gray
+                            )
+                        }
+                        Icon(
+                            Icons.Default.ChevronRight,
+                            contentDescription = "Ver chat",
+                            tint = customColor
+                        )
+                    }
+                }
+            }
+        }
+
+        // Mostrar mensajes del chat seleccionado
+        selectedChat?.let { chat ->
+            Card(elevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Chat: ${chat.user1} ↔ ${chat.user2}",
+                                style = MaterialTheme.typography.subtitle1,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                "${chat.messageCount} mensajes",
+                                style = MaterialTheme.typography.caption,
+                                color = Color.Gray
+                            )
+                        }
+                        IconButton(onClick = { selectedChat = null }) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Cerrar",
+                                tint = customColor
+                            )
+                        }
+                    }
+
+                    Divider(Modifier.padding(vertical = 8.dp))
+
+                    // Tabla de mensajes
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(customColor2)
+                            .padding(vertical = 8.dp, horizontal = 4.dp)
+                    ) {
+                        HCell("Fecha", 0.7f)
+                        HCell("Hora", 0.5f)
+                        HCell("De", 0.9f)
+                        HCell("Para", 0.9f)
+                        HCell("Mensaje", 1.8f)
+                        HCell("Estado", 0.7f)
+                    }
+                    Divider()
+
+                    // Filtrar mensajes de este chat
+                    val chatMessages = allMessages.filter {
+                        (it.sender == chat.user1 && it.receiver == chat.user2) ||
+                        (it.sender == chat.user2 && it.receiver == chat.user1)
+                    }.sortedBy { it.timestamp }
+
+                    chatMessages.forEach { msg ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Cell(formatDate(msg.timestamp), 0.7f)
+                            Cell(formatTime(msg.timestamp), 0.5f)
+                            Cell(msg.sender.takeLast(8), 0.9f) // Mostrar últimos 8 chars del ID
+                            Cell(msg.receiver.takeLast(8), 0.9f)
+                            Cell(msg.text, 1.8f)
+                            Row(Modifier.weight(0.7f), verticalAlignment = Alignment.CenterVertically) {
+                                StatusDot(colorForMessageStatus(msg.deliveryStatus, msg.readStatus))
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    if (msg.readStatus == "leido") "Leído"
+                                    else msg.deliveryStatus.capitalize(),
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                        Divider()
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Estructura para representar un mensaje
+private data class MessageRecord(
+    val id: String,
+    val sender: String,
+    val receiver: String,
+    val text: String,
+    val timestamp: Long,
+    val deliveryStatus: String = "unknown",
+    val readStatus: String = "unknown"
+)
+
+// Estructura para representar un par de chat único
+private data class ChatPair(
+    val user1: String,
+    val user2: String,
+    val messageCount: Int
+)
+
+// Extraer pares únicos de usuarios que han intercambiado mensajes
+private fun extractUniqueChatPairs(messages: List<MessageRecord>): List<ChatPair> {
+    val pairMap = mutableMapOf<String, Int>()
+
+    messages.forEach { msg ->
+        // Ordenar alfabéticamente para evitar duplicados (user1-user2 == user2-user1)
+        val sortedPair = listOf(msg.sender, msg.receiver).sorted()
+        val key = "${sortedPair[0]}|${sortedPair[1]}"
+        pairMap[key] = (pairMap[key] ?: 0) + 1
+    }
+
+    return pairMap.map { (key, count) ->
+        val users = key.split("|")
+        ChatPair(users[0], users[1], count)
+    }.sortedByDescending { it.messageCount }
 }
 
 /* ------------------------- helpers de archivos UI ------------------------- */
@@ -563,7 +905,10 @@ fun UsuariosScreen() {
     var showRaw by remember { mutableStateOf(false) }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text("Gestión de Usuarios", style = MaterialTheme.typography.h6)
@@ -597,7 +942,10 @@ fun UsuariosScreen() {
                                 }
                                 .onFailure { createMsg = "Error: ${it.message}" }
                         }
-                    }) { Text("Crear") }
+                    },
+                        colors=ButtonDefaults.buttonColors(backgroundColor = customColor2)
+                        
+                        ) { Text("Crear",color=customColor) }
                 }
                 if (createMsg.isNotEmpty()) Text(createMsg)
             }
@@ -624,7 +972,9 @@ fun UsuariosScreen() {
                                 }
                                 .onFailure { updMsg = "Error: ${it.message}" }
                         }
-                    }) { Text("Cargar") }
+                    },colors=ButtonDefaults.buttonColors(backgroundColor = customColor2)
+
+                        ) { Text("Cargar", color=customColor) }
 
                     Button(onClick = { // Desactivar
                         if (qUser.isBlank()) return@Button
@@ -634,10 +984,12 @@ fun UsuariosScreen() {
                                 .onSuccess { updMsg = "Usuario desactivado" }
                                 .onFailure { updMsg = "Error: ${it.message}" }
                         }
-                    }) {
-                        Icon(Icons.Default.Block, contentDescription = null)
+                    },
+                        colors=ButtonDefaults.buttonColors(backgroundColor = customColor2)
+                    ) {
+                        Icon(Icons.Default.Block, contentDescription = null, tint=customColor)
                         Spacer(Modifier.width(6.dp))
-                        Text("Desactivar")
+                        Text("Desactivar", color=customColor)
                     }
                 }
 
@@ -673,7 +1025,9 @@ fun UsuariosScreen() {
                                 }
                                 .onFailure { updMsg = "Error: ${it.message}" }
                         }
-                    }) { Text("Guardar cambios") }
+                    },colors=ButtonDefaults.buttonColors(backgroundColor = customColor2)
+
+                        ) { Text("Guardar cambios", color=customColor) }
                 }
 
                 if (updMsg.isNotEmpty()) Text(updMsg)
@@ -694,15 +1048,174 @@ fun RoleSelector(selected: String, onSelect: (String) -> Unit) {
     val roles = listOf("user", "admin")
     Box {
         OutlinedButton(onClick = { open = true }) {
-            Icon(Icons.Default.AdminPanelSettings, contentDescription = null)
+            Icon(Icons.Default.AdminPanelSettings, contentDescription = null, tint=customColor2)
             Spacer(Modifier.width(6.dp))
-            Text("Rol: ${selected.uppercase()}")
+            Text("Rol: ${selected.uppercase()}", color = customColor2)
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             roles.forEach { r ->
                 DropdownMenuItem(onClick = { onSelect(r); open = false }) {
                     Text(r.uppercase())
                 }
+            }
+        }
+    }
+}
+
+// ==================== PREVIEWS ====================
+
+@Preview(showBackground = true, name = "Selector de Rol")
+@Composable
+fun RoleSelectorPreview() {
+    CitofonoTheme {
+        RoleSelector(selected = "admin", onSelect = {})
+    }
+}
+
+@Preview(showBackground = true, name = "Status Dot")
+@Composable
+private fun StatusDotPreview() {
+    CitofonoTheme {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(16.dp)) {
+            StatusDot(color = Color.Green, sizeDp = 10)
+            StatusDot(color = Color.Red, sizeDp = 10)
+            StatusDot(color = Color.Yellow, sizeDp = 10)
+        }
+    }
+}
+
+@Preview(showBackground = true, name = "Import/Export Screen")
+@Composable
+private fun ImportExportScreenPreview() {
+    CitofonoTheme {
+        ImportExportScreen(
+            onImportFile = { _, _, _ -> },
+            onExportXlsx = {}
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Registro Llamadas Screen")
+@Composable
+private fun RegistroLlamadasScreenPreview() {
+    CitofonoTheme {
+        RegistroLlamadasScreen()
+    }
+}
+
+@Preview(showBackground = true, name = "Registro Mensajería Screen")
+@Composable
+private fun RegistroMensajeriaScreenPreview() {
+    CitofonoTheme {
+        RegistroMensajeriaScreen()
+    }
+}
+
+@Preview(showBackground = true, name = "Usuarios Screen")
+@Composable
+fun UsuariosScreenPreview() {
+    CitofonoTheme {
+        UsuariosScreen()
+    }
+}
+
+@Preview(showBackground = true, name = "TopAppBar Admin")
+@Composable
+private fun AdminTopAppBarPreview() {
+    CitofonoTheme {
+        TopAppBar(
+            title = { Text("Consola Administrador") },
+            backgroundColor = customColor2,
+            contentColor = Color.White,
+            actions = {
+                TextButton(onClick = { }) {
+                    Text("Salir", color = customColor)
+                }
+            }
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "BottomNavigation Admin")
+@Composable
+private fun AdminBottomNavigationPreview() {
+    CitofonoTheme {
+        var selectedIndex by remember { mutableStateOf(0) }
+        val sections = listOf(
+            AdminSection.ImportExport,
+            AdminSection.RegLlamadas,
+            AdminSection.RegMsg,
+            AdminSection.Usuarios
+        )
+
+        BottomNavigation(
+            backgroundColor = customColor2,
+            contentColor = Color.White
+        ) {
+            sections.forEachIndexed { index, item ->
+                BottomNavigationItem(
+                    icon = { Icon(item.icon, contentDescription = item.label) },
+                    label = { Text(item.label, fontSize = 11.sp) },
+                    selected = selectedIndex == index,
+                    onClick = { selectedIndex = index },
+                    selectedContentColor = Color.White,
+                    unselectedContentColor = Color.White.copy(alpha = 0.6f)
+                )
+            }
+        }
+    }
+}
+
+@Preview(showBackground = true, name = "Admin Screen Completa")
+@Composable
+private fun AdminScreenCompletePreview() {
+    CitofonoTheme {
+        var selectedIndex by remember { mutableStateOf(0) }
+        val sections = listOf(
+            AdminSection.ImportExport,
+            AdminSection.RegLlamadas,
+            AdminSection.RegMsg,
+            AdminSection.Usuarios
+        )
+
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("Consola Administrador") },
+                    backgroundColor = customColor2,
+                    contentColor = Color.White,
+                    actions = {
+                        TextButton(onClick = { }) {
+                            Text("Salir", color = customColor)
+                        }
+                    }
+                )
+            },
+            bottomBar = {
+                BottomNavigation(
+                    backgroundColor = customColor2,
+                    contentColor = Color.White
+                ) {
+                    sections.forEachIndexed { index, item ->
+                        BottomNavigationItem(
+                            icon = { Icon(item.icon, contentDescription = item.label) },
+                            label = { Text(item.label, fontSize = 11.sp) },
+                            selected = selectedIndex == index,
+                            onClick = { selectedIndex = index },
+                            selectedContentColor = Color.White,
+                            unselectedContentColor = Color.White.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+            }
+        ) { padding ->
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("Contenido de la sección: ${sections[selectedIndex].label}")
             }
         }
     }

@@ -118,6 +118,8 @@ class MessageViewModel(
                         val serverMessages = chatClient.getConversation(otherUserId)
 
                         Log.d(TAG, "☁️ MongoDB retornó ${serverMessages.size} mensajes")
+                        Log.d(TAG, "📋 chatClient.userId = ${chatClient.userId}")
+                        Log.d(TAG, "📋 otherUserId = $otherUserId")
 
                         if (serverMessages.isEmpty()) {
                             _messages.value = emptyList()
@@ -129,10 +131,28 @@ class MessageViewModel(
                         // Convertir y ordenar mensajes por timestamp
                         val convertedMessages = serverMessages.mapNotNull { msg ->
                             try {
-                                val from = msg["from"] as? String ?: return@mapNotNull null
-                                val text = msg["text"] as? String ?: return@mapNotNull null
+                                // MongoDB puede retornar "sender" en lugar de "from"
+                                val from = (msg["from"] as? String)
+                                    ?: (msg["sender"] as? String)
+                                    ?: return@mapNotNull null
+                                val to = (msg["to"] as? String)
+                                    ?: (msg["receiver"] as? String)
+                                    ?: return@mapNotNull null
+                                val text = (msg["text"] as? String)
+                                    ?: (msg["mensaje"] as? String)
+                                    ?: return@mapNotNull null
                                 val timestampStr = msg["ts"] as? String ?: ""
                                 val timestamp = parseTimestamp(timestampStr)
+
+                                // LÓGICA CORRECTA:
+                                // - Si el remitente (from) ES otherUserId → YO lo recibí → isSent = false (lado izquierdo)
+                                // - Si el remitente (from) NO ES otherUserId → YO lo envié → isSent = true (lado derecho)
+                                val isSent = from != otherUserId
+
+                                Log.d(TAG, "📨 Mensaje de MongoDB: from=$from, to=$to, text=${text.take(20)}...")
+                                Log.d(TAG, "   otherUserId: $otherUserId")
+                                Log.d(TAG, "   from == otherUserId: ${from == otherUserId}")
+                                Log.d(TAG, "   Resultado: isSent = $isSent (${if (isSent) "ENVIADO - lado derecho" else "RECIBIDO - lado izquierdo"})")
 
                                 // Generar ID único consistente
                                 val messageId = generateMessageId(from, timestamp, text)
@@ -143,11 +163,11 @@ class MessageViewModel(
                                 ChatMessage(
                                     id = messageId,
                                     text = text,
-                                    isSent = from == chatClient.userId,
+                                    isSent = isSent,
                                     timestamp = timestamp,
                                     deliveryStatus = "delivered",
                                     senderUserId = from,
-                                    receiverUserId = if (from == chatClient.userId) otherUserId else chatClient.userId
+                                    receiverUserId = to
                                 )
                             } catch (e: Exception) {
                                 Log.e(TAG, "Error parseando mensaje", e)
@@ -268,106 +288,173 @@ class MessageViewModel(
     }
 
     /**
-     * startRealtimeMessageListener: Escucha eventos en tiempo real
+     * startRealtimeMessageListener: Solución híbrida para recibir mensajes en tiempo real
      *
-     * FLUJO:
-     * - Lee la lista de eventos del chatClient
-     * - SOLO procesa eventos NUEVOS desde eventStartIndex
-     * - Procesa:
-     *   - new_message: Nuevo mensaje recibido del otro usuario
-     *   - user_typing: Estado de escritura del otro usuario
-     *   - message_read: Mensaje fue leído
-     * - Evita duplicados usando processedMessageIds
-     * - Mantiene orden cronológico de mensajes
+     * PROBLEMA ACTUAL: El servicio de mensajería NO envía eventos new_message cuando
+     * otro usuario envía un mensaje. Solo responde al REQUEST de envío.
+     *
+     * SOLUCIÓN HÍBRIDA:
+     * 1. Escuchar eventos del BUS (por si en el futuro el backend los envía)
+     * 2. Polling ligero cada 3 segundos para detectar mensajes nuevos del otro usuario
+     * 3. Los mensajes propios se agregan inmediatamente en sendMessage() (optimistic update)
      */
     private fun startRealtimeMessageListener() {
+        Log.d(TAG, "🎧 Listener híbrido INICIADO (eventos + polling)")
+        Log.d(TAG, "   Índice inicial de eventos: $eventStartIndex")
+
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
-                var lastProcessedIndex = eventStartIndex
-
                 while (true) {
                     try {
-                        kotlinx.coroutines.delay(300)
+                        kotlinx.coroutines.delay(3000) // Cada 3 segundos
 
-                        val currentEventsSize = chatClient.getEventsCount()
+                        // PARTE 1: Procesar eventos del BUS (si existen)
+                        val currentEvents = chatClient.events.toList()
+                        val eventsCount = currentEvents.size
 
-                        // Solo procesar eventos nuevos
-                        if (currentEventsSize > lastProcessedIndex) {
-                            val newEvents = chatClient.events.drop(lastProcessedIndex)
+                        if (eventsCount > eventStartIndex) {
+                            val newEvents = currentEvents.subList(eventStartIndex, eventsCount)
+                            Log.d(TAG, "📨 ${newEvents.size} evento(s) del BUS detectado(s)")
 
                             newEvents.forEach { eventMap ->
-                                val event = eventMap["event"] as? String ?: ""
-                                @Suppress("UNCHECKED_CAST")
-                                val data = eventMap["data"] as? Map<String, Any> ?: emptyMap()
+                                try {
+                                    val eventType = eventMap["event"] as? String
+                                    @Suppress("UNCHECKED_CAST")
+                                    val eventData = eventMap["data"] as? Map<String, Any>
 
-                                when (event) {
-                                    "new_message" -> {
-                                        val from = data["from"] as? String ?: ""
-                                        val text = data["text"] as? String ?: ""
-                                        val timestampStr = data["timestamp"] as? String ?: ""
-                                        val timestamp = parseTimestampFromEvent(timestampStr)
-
-                                        // SOLO procesar mensajes del otro usuario en ESTE chat
-                                        if (from == otherUserId) {
-                                            val messageId = generateMessageId(from, timestamp, text)
-
-                                            // Verificar duplicados
-                                            if (processedMessageIds.contains(messageId)) {
-                                                Log.d(TAG, "⚠️ Mensaje duplicado ignorado (evento)")
-                                                return@forEach
-                                            }
-
-                                            val newMessage = ChatMessage(
-                                                id = messageId,
-                                                text = text,
-                                                isSent = false,
-                                                timestamp = timestamp,
-                                                deliveryStatus = "delivered",
-                                                senderUserId = from,
-                                                receiverUserId = chatClient.userId
-                                            )
-
-                                            processedMessageIds.add(messageId)
-
-                                            val currentMessages = _messages.value.toMutableList()
-                                            currentMessages.add(newMessage)
-                                            // Mantener orden cronológico
-                                            _messages.value = currentMessages.sortedBy { it.timestamp }
-
-                                            Log.d(TAG, "💬 Nuevo mensaje en tiempo real de $from")
-                                        }
+                                    if (eventType == "new_message" && eventData != null) {
+                                        processNewMessageEvent(eventData)
                                     }
-
-                                    "user_typing" -> {
-                                        val userTyping = data["user_id"] as? String ?: ""
-                                        val isTyping = data["is_typing"] as? Boolean ?: false
-
-                                        if (userTyping == otherUserId) {
-                                            _isOtherTyping.value = isTyping
-                                        }
-                                    }
-
-                                    "message_read" -> {
-                                        val updatedMessages = _messages.value.map {
-                                            if (it.isSent && it.deliveryStatus != "read") {
-                                                it.copy(deliveryStatus = "read")
-                                            } else {
-                                                it
-                                            }
-                                        }
-                                        _messages.value = updatedMessages
-                                    }
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Error procesando evento", e)
                                 }
                             }
 
-                            lastProcessedIndex = currentEventsSize
+                            eventStartIndex = eventsCount
                         }
 
-                    } catch (e: Exception) {
+                        // PARTE 2: Polling ligero para mensajes del OTRO usuario solamente
+                        // (los propios ya se agregan en sendMessage con optimistic update)
+                        checkForNewMessages()
 
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error en listener", e)
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * processNewMessageEvent: Procesa un evento new_message del BUS
+     */
+    private fun processNewMessageEvent(eventData: Map<String, Any>) {
+        val from = eventData["from"] as? String ?: ""
+        val text = eventData["text"] as? String ?: ""
+        val timestampStr = eventData["timestamp"] as? String ?: ""
+
+        Log.d(TAG, "💬 Evento new_message: from=$from, text=${text.take(20)}...")
+
+        // Validar que sea de esta conversación
+        val isFromCurrentChat = (from == otherUserId || from == chatClient.userId)
+        val isToCurrentChat = (
+            eventData["to"] == otherUserId ||
+            eventData["to"] == chatClient.userId
+        )
+
+        if (!isFromCurrentChat || !isToCurrentChat) {
+            Log.d(TAG, "⏭️ Mensaje de otra conversación, ignorando")
+            return
+        }
+
+        val timestamp = parseTimestampFromEvent(timestampStr)
+        val messageId = generateMessageId(from, timestamp, text)
+
+        if (processedMessageIds.contains(messageId)) {
+            Log.d(TAG, "⚠️ Mensaje duplicado, ignorando")
+            return
+        }
+
+        processedMessageIds.add(messageId)
+
+        val newMessage = ChatMessage(
+            id = messageId,
+            text = text,
+            isSent = from == chatClient.userId,
+            timestamp = timestamp,
+            deliveryStatus = "delivered",
+            senderUserId = from,
+            receiverUserId = if (from == chatClient.userId) otherUserId else chatClient.userId
+        )
+
+        val currentMessages = _messages.value.toMutableList()
+        currentMessages.add(newMessage)
+        _messages.value = currentMessages.sortedBy { it.timestamp }
+
+        Log.d(TAG, "✅ Mensaje del evento agregado")
+    }
+
+    /**
+     * checkForNewMessages: Consulta MongoDB por mensajes nuevos (solo del otro usuario)
+     *
+     * Esta función hace polling ligero para detectar mensajes que el otro usuario
+     * envió pero que no llegaron como evento del BUS
+     */
+    private suspend fun checkForNewMessages() {
+        try {
+            val serverMessages = chatClient.getConversation(otherUserId)
+
+            if (serverMessages.isEmpty()) return
+
+            // Solo procesar mensajes DEL OTRO USUARIO que no hayamos visto
+            serverMessages.forEach { msg ->
+                try {
+                    val from = (msg["from"] as? String)
+                        ?: (msg["sender"] as? String)
+                        ?: return@forEach
+
+                    // CRÍTICO: Solo agregar mensajes donde from == otherUserId
+                    // (mensajes RECIBIDOS del otro usuario)
+                    // Los mensajes propios ya se agregaron en sendMessage() con optimistic update
+                    if (from != otherUserId) {
+                        // Este mensaje NO es del otro usuario, ignorarlo
+                        return@forEach
+                    }
+
+                    val text = (msg["text"] as? String)
+                        ?: (msg["mensaje"] as? String)
+                        ?: return@forEach
+                    val timestampStr = msg["ts"] as? String ?: ""
+                    val timestamp = parseTimestamp(timestampStr)
+
+                    val messageId = generateMessageId(from, timestamp, text)
+
+                    // Solo agregar si es nuevo
+                    if (!processedMessageIds.contains(messageId)) {
+                        processedMessageIds.add(messageId)
+
+                        val newMessage = ChatMessage(
+                            id = messageId,
+                            text = text,
+                            isSent = false, // Siempre false porque from == otherUserId
+                            timestamp = timestamp,
+                            deliveryStatus = "delivered",
+                            senderUserId = from,
+                            receiverUserId = chatClient.userId
+                        )
+
+                        val currentMessages = _messages.value.toMutableList()
+                        currentMessages.add(newMessage)
+                        _messages.value = currentMessages.sortedBy { it.timestamp }
+
+                        Log.d(TAG, "💬 ✅ Mensaje nuevo del otro usuario detectado: ${text.take(20)}...")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error procesando mensaje", e)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error consultando mensajes nuevos", e)
         }
     }
 

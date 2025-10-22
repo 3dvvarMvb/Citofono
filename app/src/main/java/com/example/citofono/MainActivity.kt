@@ -14,14 +14,15 @@ import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
+import androidx.compose.ui.tooling.preview.Preview
 import com.example.citofono.ui.theme.CitofonoTheme
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+
 
 data class ResolvedContact(val department: String, val phones: List<String>)
 
@@ -57,12 +58,34 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             CitofonoTheme {
-                var selectedTab by remember { mutableStateOf(0) } // 0: Marcador, 1: Mensajería (placeholder)
+                var selectedTab by remember { mutableStateOf(0) } // 0: Marcador, 1: Mensajería
+
+                // Detectar cuando se selecciona la pestaña de Mensajería
+                LaunchedEffect(selectedTab) {
+                    if (selectedTab == 1) {
+                        // Iniciar ChatsActivity con datos del usuario
+                        val username = SessionManager.username(this@MainActivity)
+                        val userId = SessionManager.userId(this@MainActivity).ifBlank {
+                            // Fallback: si no hay userId guardado, usar sessionId temporalmente
+                            SessionManager.sessionId(this@MainActivity)
+                        }
+
+                        val intent = Intent(this@MainActivity, ChatsActivity::class.java).apply {
+                            putExtra("USER_ID", userId)
+                            putExtra("USERNAME", username)
+                        }
+                        startActivity(intent)
+
+                        // Resetear a la pestaña Marcador después de iniciar ChatsActivity
+                        selectedTab = 0
+                    }
+                }
 
                 Scaffold(
                     topBar = {
                         TopAppBar(
-                            title = { Text("Citófono") },
+                            title = { Text("Citófono",color=customColor) },
+                            backgroundColor = customColor2,
                             actions = {
                                 TextButton(onClick = { SessionManager.logoutAndGoToLogin(this@MainActivity) }) {
                                     Text("Salir", color = MaterialTheme.colors.onPrimary)
@@ -72,23 +95,21 @@ class MainActivity : ComponentActivity() {
                     }
                 ) { padding ->
                     Column(Modifier.fillMaxSize().padding(padding)) {
-                        TabRow(selectedTabIndex = selectedTab) {
-                            Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Marcador") })
-                            Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Mensajería") })
+                        TabRow(selectedTabIndex = selectedTab, backgroundColor = customColor2) {
+                            Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Marcador",color=customColor) })
+                            Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Mensajería",color=customColor) })
                         }
                         Box(Modifier.fillMaxSize()) {
-                            when (selectedTab) {
-                                0 -> SearchScreen(
-                                    searchQuery = searchQuery,
-                                    onSearchQueryChange = { searchQuery = it },
-                                    resolveDepto = { depto -> resolveDeptoToContact(depto) },
-                                    onCallClick = { phoneNumber, department ->
-                                        makeCall(phoneNumber, department)
-                                        searchQuery = ""
-                                    }
-                                )
-                                1 -> MensajeriaPlaceholder()
-                            }
+                            // Siempre mostramos el Marcador cuando estamos en MainActivity
+                            SearchScreen(
+                                searchQuery = searchQuery,
+                                onSearchQueryChange = { searchQuery = it },
+                                resolveDepto = { depto -> resolveDeptoToContact(depto) },
+                                onCallClick = { phoneNumber, department ->
+                                    makeCall(phoneNumber, department)
+                                    searchQuery = ""
+                                }
+                            )
                         }
                     }
                 }
@@ -173,3 +194,44 @@ private fun MensajeriaPlaceholder() {
         Text("Mensajería irá aquí (equipo de tu compañero).")
     }
 }
+
+// ==================== PREVIEWS ====================
+
+@Preview(showBackground = true, name = "Placeholder de Mensajería")
+@Composable
+private fun MensajeriaPlaceholderPreview() {
+    CitofonoTheme {
+        MensajeriaPlaceholder()
+    }
+}
+
+@Preview(showBackground = true, name = "MainActivity Scaffold")
+@Composable
+private fun MainActivityScaffoldPreview() {
+    CitofonoTheme {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("Citófono",color=customColor) },
+                    backgroundColor = customColor2,
+                    actions = {
+                        TextButton(onClick = { /*TODO*/ }) {
+                            Text("Salir", color = MaterialTheme.colors.onPrimary)
+                        }
+                    }
+                )
+            }
+        ) { padding ->
+            Column(Modifier.fillMaxSize().padding(padding)) {
+                TabRow(selectedTabIndex = 0, backgroundColor = customColor2) {
+                    Tab(selected = true, onClick = { }, text = { Text("Marcador",color=customColor) })
+                    Tab(selected = false, onClick = { }, text = { Text("Mensajería",color=customColor) })
+                }
+                Box(Modifier.fillMaxSize()) {
+                    MensajeriaPlaceholder()
+                }
+            }
+        }
+    }
+}
+

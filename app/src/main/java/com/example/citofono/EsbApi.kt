@@ -227,12 +227,12 @@ object EsbApi {
             unwrapPayload(resp)
         }
 
-    // ---------------- Mensajería (placeholder; lo implementará tu compañero) ----------------
+    // ---------------- Mensajería ----------------
     suspend fun messagesList(
         fromDate: String? = null,
         toDate: String? = null,
         user: String? = null,
-        limit: Int = 100
+        limit: Int = 1000
     ): JSONArray = withContext(Dispatchers.IO) {
         ensureConnected()
         val body = JSONObject().apply {
@@ -241,9 +241,18 @@ object EsbApi {
             user?.let { put("user", it) }
             put("limit", limit)
         }
-        val resp = client.request("Mensajeria", "list", body, 10_000) // servicio a cargo de tu compañero
+        val resp = client.request(
+            service = "Mensajeria",
+            action = "get_all_messages",
+            body = body,
+            timeoutMs = 15_000
+        )
         val data = unwrapPayload(resp)
-        data.optJSONArray("items") ?: JSONArray()
+        // El servicio puede retornar "messages", "items" o directamente un array
+        data.optJSONArray("messages")
+            ?: data.optJSONArray("items")
+            ?: data.optJSONArray("data")
+            ?: JSONArray()
     }
     // En tu objeto EsbApi
 // Versión tipada para la consola de admin
@@ -281,19 +290,19 @@ suspend fun callsList(
             o.has("ts")         -> normalizeToMillis(o.opt("ts"))
             o.has("created_at") -> normalizeToMillis(o.opt("created_at"))
             else -> parseFechaHoraToMillis(
-                o.optString("fecha", null),
-                o.optString("hora", null)
+                o.optString("fecha", ""),
+                o.optString("hora", "")
             )
         }
 
         out += CallLog(
             id = o.optString("_id", o.optString("id", "$i")),
             tsMillis = tsMs,
-            caller = o.optString("caller", null),
-            depto = o.optString("depto", o.optString("departamento", null)),
+            caller = o.optString("caller", ""),
+            depto = o.optString("depto", o.optString("departamento", "")),
             durationSec = o.optInt("durationSec", o.optInt("duration", o.optInt("duracion", 0))),
             status = o.optString("status", "unknown"),
-            destination = o.optString("destination", o.optString("telefono", null))
+            destination = o.optString("destination", o.optString("telefono", ""))
         )
     }
     out.sortedByDescending { it.tsMillis }
@@ -317,6 +326,8 @@ private fun parseFechaHoraToMillis(fecha: String?, hora: String?): Long {
     val pat = if (hora.isNullOrBlank()) "yyyy-MM-dd" else "yyyy-MM-dd HH:mm"
     return try {
         val sdf = java.text.SimpleDateFormat(pat, java.util.Locale.US)
+        // Usar la zona horaria del dispositivo
+        sdf.timeZone = java.util.TimeZone.getDefault()
         sdf.parse(listOfNotNull(fecha, hora).joinToString(" "))?.time ?: 0L
     } catch (_: Exception) { 0L }
 }
@@ -331,6 +342,8 @@ private fun parseDateMulti(s: String): Long {
     for (p in patterns) {
         try {
             val sdf = java.text.SimpleDateFormat(p, java.util.Locale.US)
+            // Usar la zona horaria del dispositivo
+            sdf.timeZone = java.util.TimeZone.getDefault()
             return sdf.parse(s)?.time ?: continue
         } catch (_: Exception) { /* next */ }
     }

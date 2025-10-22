@@ -385,3 +385,34 @@ private fun ContactsCardList(items: List<ContactItem>, onCall: (String) -> Unit)
         }
     }
 }
+
+// ==================== PREVIEWS ====================
+
+@androidx.compose.ui.tooling.preview.Preview(showBackground = true, name = "Funcionalidades Screen")
+@Composable
+fun FuncionalidadesScreenPreview() {
+    MaterialTheme {
+        FuncionalidadesScreen(onCall = {})
+    }
+}
+
+@androidx.compose.ui.tooling.preview.Preview(showBackground = true, name = "Contacts Card List")
+@Composable
+fun ContactsCardListPreview() {
+    val sampleContacts = listOf(
+        ContactItem(
+            departamento = "101",
+            nombre = "Juan Pérez",
+            telefonos = listOf("+56912345678", "+56987654321")
+        ),
+        ContactItem(
+            departamento = "202",
+            nombre = "María González",
+            telefonos = listOf("+56911111111")
+        )
+    )
+    MaterialTheme {
+        ContactsCardList(items = sampleContacts, onCall = {})
+    }
+}
+

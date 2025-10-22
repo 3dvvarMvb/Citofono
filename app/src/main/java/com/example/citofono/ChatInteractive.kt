@@ -389,7 +389,10 @@ class InteractiveChatClient(
      * Las respuestas a REQUEST se agregan a 'responseQueue' para procesamiento
      */
     private fun listenEvents() {
+        android.util.Log.d("ChatClient", "🎧 listenEvents() thread iniciado")
         val reader = socket?.getInputStream()?.bufferedReader()
+        var messageCount = 0
+
         while (running) {
             try {
                 socket?.soTimeout = 1000
@@ -398,20 +401,30 @@ class InteractiveChatClient(
                 if (line == null) break
                 if (line.isBlank()) continue
 
+                messageCount++
+                android.util.Log.d("ChatClient", "📨 Mensaje #$messageCount recibido del BUS: ${line.take(100)}...")
+
                 @Suppress("UNCHECKED_CAST")
                 val type = object : TypeToken<Map<String, Any>>() {}.type
                 val msg = gson.fromJson<Map<String, Any>>(line, type) ?: continue
                 val msgType = msg["type"] as? String
 
-                if (msgType == "DELIVERY_ACK") continue
+                android.util.Log.d("ChatClient", "   Tipo: $msgType")
+
+                if (msgType == "DELIVERY_ACK") {
+                    android.util.Log.d("ChatClient", "   ⏭️ DELIVERY_ACK ignorado")
+                    continue
+                }
 
                 // Manejar BROADCAST
                 if (msgType == "BROADCAST") {
+                    android.util.Log.d("ChatClient", "   📢 BROADCAST detectado")
                     handleBroadcast(msg)
                     continue
                 }
 
                 if (msgType == "DIRECT") {
+                    android.util.Log.d("ChatClient", "   📧 DIRECT detectado")
                     @Suppress("UNCHECKED_CAST")
                     val payload = msg["payload"] as? Map<String, Any>
 
@@ -419,10 +432,23 @@ class InteractiveChatClient(
                         val event = payload["event"] as? String
                         @Suppress("UNCHECKED_CAST")
                         val data = payload["data"] as? Map<String, Any>
-                        @Suppress("UNCHECKED_CAST")
-                        events.add(mapOf("event" to event, "data" to data) as Map<String, Any>)
+
+                        android.util.Log.d("ChatClient", "   🎯 EVENTO DETECTADO: $event")
+                        android.util.Log.d("ChatClient", "   📦 Data: $data")
+
+                        // Agregar al array de eventos con thread-safety
+                        eventsLock.lock()
+                        try {
+                            @Suppress("UNCHECKED_CAST")
+                            events.add(mapOf("event" to event, "data" to data) as Map<String, Any>)
+                            android.util.Log.d("ChatClient", "   ✅ Evento agregado a lista. Total eventos: ${events.size}")
+                        } finally {
+                            eventsLock.unlock()
+                        }
+
                         handleEvent(event ?: "", data ?: emptyMap())
                     } else {
+                        android.util.Log.d("ChatClient", "   📥 Respuesta REQUEST detectada")
                         queueLock.lock()
                         try {
                             responseQueue.add(msg)
@@ -430,16 +456,21 @@ class InteractiveChatClient(
                             queueLock.unlock()
                         }
                     }
+                } else {
+                    android.util.Log.d("ChatClient", "   ⚠️ Tipo de mensaje desconocido: $msgType")
                 }
             } catch (_: SocketTimeoutException) {
+                // Normal, continuar
                 continue
             } catch (e: Exception) {
                 if (running) {
+                    android.util.Log.e("ChatClient", "⚠️ Error en listener: ${e.message}", e)
                     println("\n⚠️ Error en listener: ${e.message}")
                 }
                 break
             }
         }
+        android.util.Log.d("ChatClient", "🔌 listenEvents() thread terminado. Total mensajes procesados: $messageCount")
     }
 
     /**
