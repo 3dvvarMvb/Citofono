@@ -4,10 +4,10 @@
     <selectionStates>
       <SelectionState runConfigName="app">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2025-10-19T08:34:04.006444752Z">
+        <DropdownSelection timestamp="2025-10-22T01:37:40.150054055Z">
           <Target type="DEFAULT_BOOT">
             <handle>
-              <DeviceId pluginId="LocalEmulator" identifier="path=/home/martuko/.config/.android/avd/Medium_Phone.avd" />
+              <DeviceId pluginId="PhysicalDevice" identifier="serial=PNYL5H8L8LSK9L9H" />
             </handle>
           </Target>
         </DropdownSelection>

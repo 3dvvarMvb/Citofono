@@ -622,6 +622,9 @@ private fun RegistroMensajeriaScreen() {
     var loading by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf("") }
 
+    // Caché de ObjectID -> Username
+    val userCache = remember { mutableMapOf<String, String>() }
+
     // Estado para el chat seleccionado
     var selectedChat by remember { mutableStateOf<ChatPair?>(null) }
 
@@ -630,52 +633,140 @@ private fun RegistroMensajeriaScreen() {
         extractUniqueChatPairs(allMessages)
     }
 
+    // Función para resolver ObjectID a username
+    suspend fun resolveUserId(objectId: String): String {
+        // Si ya está en caché, retornar
+        if (userCache.containsKey(objectId)) {
+            return userCache[objectId]!!
+        }
+
+        // Si parece un username (no es un ObjectID de 24 chars hex), retornar tal cual
+        if (objectId.length != 24 || !objectId.matches(Regex("^[a-f0-9]{24}$"))) {
+            userCache[objectId] = objectId
+            return objectId
+        }
+
+        // Consultar al servidor
+        return try {
+            val userInfo = EsbApi.adminGetUserById(objectId)
+            val username = userInfo.optString("username", objectId)
+            userCache[objectId] = username
+            android.util.Log.d("RegistroMensajeria", "Resolved $objectId -> $username")
+            username
+        } catch (e: Exception) {
+            android.util.Log.e("RegistroMensajeria", "Error resolviendo user $objectId: ${e.message}")
+            userCache[objectId] = objectId.takeLast(8) // Mostrar últimos 8 chars
+            objectId.takeLast(8)
+        }
+    }
+
     // Cargar mensajes al inicio
     LaunchedEffect(Unit) {
         loading = true
         errorMsg = ""
         scope.launch {
             runCatching { EsbApi.messagesList(limit = 1000) }
-                .onSuccess { jsonArray ->
+                .onSuccess { response ->
                     val messages = mutableListOf<MessageRecord>()
-                    for (i in 0 until jsonArray.length()) {
-                        val obj = jsonArray.getJSONObject(i)
+
+                    // La respuesta es un JSONObject con formato: { "ok": true, "messages": [...] }
+                    val messagesArray = response.optJSONArray("messages") ?: org.json.JSONArray()
+
+                    android.util.Log.d("RegistroMensajeria", "📊 Total de mensajes en array: ${messagesArray.length()}")
+
+                    for (i in 0 until messagesArray.length()) {
+                        val obj = messagesArray.getJSONObject(i)
 
                         // Parsear la fecha ISO o usar timestamp
-                        val timestamp = if (obj.has("fecha")) {
-                            // Intentar parsear la fecha ISO
+                        val timestamp = if (obj.has("timestamp")) {
+                            try {
+                                val timestampStr = obj.optString("timestamp", "")
+                                val formatter = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
+                                formatter.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                                formatter.parse(timestampStr)?.time ?: 0L
+                            } catch (e: Exception) {
+                                obj.optLong("timestamp", 0L)
+                            }
+                        } else if (obj.has("fecha")) {
                             try {
                                 val fechaStr = obj.optString("fecha", "")
                                 val formatter = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.getDefault())
                                 formatter.timeZone = java.util.TimeZone.getTimeZone("UTC")
                                 formatter.parse(fechaStr)?.time ?: 0L
                             } catch (e: Exception) {
-                                obj.optLong("timestamp", 0L)
+                                0L
                             }
                         } else {
-                            obj.optLong("timestamp", 0L)
+                            0L
                         }
 
-                        // Parsear sender y receiver (pueden ser ObjectId strings o usernames)
-                        val senderId = obj.optString("sender", "?")
-                        val receiverId = obj.optString("receiver", "?")
+                        // 📝 LOG: Verificar tipo de dato de sender
+                        android.util.Log.d("RegistroMensajeria", "🔍 Verificando 'sender':")
+                        android.util.Log.d("RegistroMensajeria", "  - obj.has('sender'): ${obj.has("sender")}")
+                        if (obj.has("sender")) {
+                            val senderValue = obj.get("sender")
+                            android.util.Log.d("RegistroMensajeria", "  - Tipo: ${senderValue::class.java.simpleName}")
+                            android.util.Log.d("RegistroMensajeria", "  - Valor: $senderValue")
+                        }
+
+                        // 📝 LOG: Verificar tipo de dato de receiver
+                        android.util.Log.d("RegistroMensajeria", "🔍 Verificando 'receiver':")
+                        android.util.Log.d("RegistroMensajeria", "  - obj.has('receiver'): ${obj.has("receiver")}")
+                        if (obj.has("receiver")) {
+                            val receiverValue = obj.get("receiver")
+                            android.util.Log.d("RegistroMensajeria", "  - Tipo: ${receiverValue::class.java.simpleName}")
+                            android.util.Log.d("RegistroMensajeria", "  - Valor: $receiverValue")
+                        }
+
+                        // ✅ Extraer información del sender (nuevo formato con objeto completo)
+                        val senderName = if (obj.has("sender") && obj.get("sender") is org.json.JSONObject) {
+                            val senderObj = obj.getJSONObject("sender")
+                            android.util.Log.d("RegistroMensajeria", "  ✅ sender es JSONObject")
+                            android.util.Log.d("RegistroMensajeria", "     username: ${senderObj.optString("username", "?")}")
+                            senderObj.optString("username", "?")
+                        } else {
+                            // Fallback: si viene como string (formato antiguo), usar "from"
+                            android.util.Log.d("RegistroMensajeria", "  ⚠️ sender NO es JSONObject, usando fallback")
+                            val fallback = obj.optString("from", obj.optString("sender", "?"))
+                            android.util.Log.d("RegistroMensajeria", "     fallback value: $fallback")
+                            fallback
+                        }
+
+                        // ✅ Extraer información del receiver (nuevo formato con objeto completo)
+                        val receiverName = if (obj.has("receiver") && obj.get("receiver") is org.json.JSONObject) {
+                            val receiverObj = obj.getJSONObject("receiver")
+                            android.util.Log.d("RegistroMensajeria", "  ✅ receiver es JSONObject")
+                            android.util.Log.d("RegistroMensajeria", "     username: ${receiverObj.optString("username", "?")}")
+                            receiverObj.optString("username", "?")
+                        } else {
+                            // Fallback: si viene como string (formato antiguo), usar "to"
+                            android.util.Log.d("RegistroMensajeria", "  ⚠️ receiver NO es JSONObject, usando fallback")
+                            val fallback = obj.optString("to", obj.optString("receiver", "?"))
+                            android.util.Log.d("RegistroMensajeria", "     fallback value: $fallback")
+                            fallback
+                        }
+
+                        android.util.Log.d("RegistroMensajeria", "✉️ RESULTADO: $senderName -> $receiverName")
 
                         messages.add(
                             MessageRecord(
-                                id = obj.optString("_id", obj.optString("id", "")),
-                                sender = senderId,
-                                receiver = receiverId,
-                                text = obj.optString("mensaje", obj.optString("message", obj.optString("text", ""))),
+                                id = obj.optString("id", obj.optString("_id", "")),
+                                sender = senderName,
+                                receiver = receiverName,
+                                text = obj.optString("text", obj.optString("mensaje", obj.optString("message", ""))),
                                 timestamp = timestamp,
                                 deliveryStatus = obj.optString("deliveryStatus", "unknown"),
                                 readStatus = obj.optString("readStatus", "unknown")
                             )
                         )
                     }
+
                     allMessages = messages.sortedBy { it.timestamp }
+                    android.util.Log.d("RegistroMensajeria", "✅ Cargados ${messages.size} mensajes con usuarios resueltos")
                 }
                 .onFailure {
                     errorMsg = "Error al cargar mensajes: ${it.message}"
+                    android.util.Log.e("RegistroMensajeria", "Error: ${it.message}", it)
                 }
             loading = false
         }
@@ -812,8 +903,8 @@ private fun RegistroMensajeriaScreen() {
                         ) {
                             Cell(formatDate(msg.timestamp), 0.7f)
                             Cell(formatTime(msg.timestamp), 0.5f)
-                            Cell(msg.sender.takeLast(8), 0.9f) // Mostrar últimos 8 chars del ID
-                            Cell(msg.receiver.takeLast(8), 0.9f)
+                            Cell(msg.sender, 0.9f) // Ahora muestra el username resuelto
+                            Cell(msg.receiver, 0.9f) // Ahora muestra el username resuelto
                             Cell(msg.text, 1.8f)
                             Row(Modifier.weight(0.7f), verticalAlignment = Alignment.CenterVertically) {
                                 StatusDot(colorForMessageStatus(msg.deliveryStatus, msg.readStatus))

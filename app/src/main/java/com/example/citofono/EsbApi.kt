@@ -227,13 +227,26 @@ object EsbApi {
             unwrapPayload(resp)
         }
 
+    suspend fun adminGetUserById(userId: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            ensureConnected()
+            val body = JSONObject().put("user_id", userId)
+            val resp = client.request(
+                service = "Administracion",
+                action = "get_user_by_id",
+                body = body,
+                timeoutMs = 12_000
+            )
+            unwrapPayload(resp)
+        }
+
     // ---------------- Mensajería ----------------
     suspend fun messagesList(
         fromDate: String? = null,
         toDate: String? = null,
         user: String? = null,
         limit: Int = 1000
-    ): JSONArray = withContext(Dispatchers.IO) {
+    ): JSONObject = withContext(Dispatchers.IO) {
         ensureConnected()
         val body = JSONObject().apply {
             fromDate?.let { put("from", it) }
@@ -247,12 +260,9 @@ object EsbApi {
             body = body,
             timeoutMs = 15_000
         )
-        val data = unwrapPayload(resp)
-        // El servicio puede retornar "messages", "items" o directamente un array
-        data.optJSONArray("messages")
-            ?: data.optJSONArray("items")
-            ?: data.optJSONArray("data")
-            ?: JSONArray()
+        // Retornar el objeto completo que ahora incluye: { "ok": true, "messages": [...] }
+        // donde cada mensaje tiene sender/receiver con objetos completos de usuario
+        unwrapPayload(resp)
     }
     // En tu objeto EsbApi
 // Versión tipada para la consola de admin
