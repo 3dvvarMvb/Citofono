@@ -12,8 +12,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.text.Charsets
 
 /**
  * ============================================================================
@@ -51,7 +53,7 @@ class MessageViewModel(
     private val context: Context,
     private val chatClient: InteractiveChatClient,
     private val otherUserId: String,
-    @Suppress("unused") private val otherUsername: String
+    private val otherUsername: String
 ) : ViewModel() {
 
     private val TAG = "MessageViewModel"
@@ -75,6 +77,8 @@ class MessageViewModel(
         // Configurar el chat actual
         chatClient.currentChatSenderId = chatClient.userId
         chatClient.currentChatReceiverId = otherUserId
+        chatClient.otherUserId = otherUserId
+        chatClient.otherUsername = otherUsername
 
         // PASO 1: Limpiar eventos previos para no procesar eventos antiguos
         chatClient.clearEvents()
@@ -131,34 +135,53 @@ class MessageViewModel(
                         // Convertir y ordenar mensajes por timestamp
                         val convertedMessages = serverMessages.mapNotNull { msg ->
                             try {
-                                // MongoDB puede retornar "sender" en lugar de "from"
-                                val from = (msg["from"] as? String)
-                                    ?: (msg["sender"] as? String)
-                                    ?: return@mapNotNull null
-                                val to = (msg["to"] as? String)
-                                    ?: (msg["receiver"] as? String)
-                                    ?: return@mapNotNull null
                                 val text = (msg["text"] as? String)
                                     ?: (msg["mensaje"] as? String)
                                     ?: return@mapNotNull null
                                 val timestampStr = msg["ts"] as? String ?: ""
                                 val timestamp = parseTimestamp(timestampStr)
 
-                                // LÓGICA CORRECTA:
-                                // - Si el remitente (from) ES otherUserId → YO lo recibí → isSent = false (lado izquierdo)
-                                // - Si el remitente (from) NO ES otherUserId → YO lo envié → isSent = true (lado derecho)
-                                val isSent = from != otherUserId
+                                val (senderCandidates, senderStableKey) = resolveSenderDetails(msg)
+                                val (_, receiverDisplay) = resolveReceiverDetails(msg)
+                                val senderDisplay = senderCandidates.names.firstOrNull()
+                                    ?: senderStableKey.ifBlank { (msg["from"] as? String)?.trim().orEmpty() }
 
-                                Log.d(TAG, "📨 Mensaje de MongoDB: from=$from, to=$to, text=${text.take(20)}...")
-                                Log.d(TAG, "   otherUserId: $otherUserId")
-                                Log.d(TAG, "   from == otherUserId: ${from == otherUserId}")
-                                Log.d(TAG, "   Resultado: isSent = $isSent (${if (isSent) "ENVIADO - lado derecho" else "RECIBIDO - lado izquierdo"})")
+                                val senderIsCurrent = matchesUser(senderCandidates, chatClient.userId)
+                                val senderIsOther = matchesUser(senderCandidates, otherUserId)
 
-                                // Generar ID único consistente
-                                val messageId = generateMessageId(from, timestamp, text)
+                                val fallbackFrom = (msg["from"] as? String)?.trim()
+                                val fallbackHex = fallbackFrom
+                                    ?.takeIf { it.isNotEmpty() && hex24Regex.matches(it) }
+                                    ?.lowercase(Locale.ROOT)
+                                val otherHash = deterministicObjectId(otherUserId)?.lowercase(Locale.ROOT)
 
-                                // Marcar como procesado
+                                val isSent = when {
+                                    senderIsCurrent -> true
+                                    senderIsOther -> false
+                                    fallbackFrom == null -> true
+                                    fallbackHex != null && otherHash != null -> fallbackHex != otherHash
+                                    else -> !fallbackFrom.equals(otherUserId, ignoreCase = true)
+                                }
+
+                                val messageId = generateMessageId(
+                                    (senderStableKey.ifBlank { senderDisplay.ifBlank { "unknown" } }),
+                                    timestamp,
+                                    text
+                                )
+
                                 processedMessageIds.add(messageId)
+
+                                val senderUserIdForMessage = when {
+                                    senderIsCurrent -> chatClient.userId
+                                    senderIsOther -> otherUserId
+                                    senderDisplay.isNotBlank() -> senderDisplay
+                                    else -> senderStableKey.ifBlank { chatClient.userId }
+                                }
+                                val receiverUserIdForMessage = if (isSent) {
+                                    receiverDisplay.ifBlank { otherUserId }
+                                } else {
+                                    chatClient.userId
+                                }
 
                                 ChatMessage(
                                     id = messageId,
@@ -166,8 +189,8 @@ class MessageViewModel(
                                     isSent = isSent,
                                     timestamp = timestamp,
                                     deliveryStatus = "delivered",
-                                    senderUserId = from,
-                                    receiverUserId = to
+                                    senderUserId = senderUserIdForMessage,
+                                    receiverUserId = receiverUserIdForMessage
                                 )
                             } catch (e: Exception) {
                                 Log.e(TAG, "Error parseando mensaje", e)
@@ -253,7 +276,7 @@ class MessageViewModel(
             // Enviar al servidor para persistir en MongoDB
             withContext(Dispatchers.IO) {
                 try {
-                    val success = chatClient.sendMessage(otherUserId, text)
+                    val success = chatClient.sendMessage(otherUserId, text, otherUsername)
 
                     // Actualizar estado del mensaje
                     val updatedMessages = _messages.value.map {
@@ -349,26 +372,32 @@ class MessageViewModel(
      * processNewMessageEvent: Procesa un evento new_message del BUS
      */
     private fun processNewMessageEvent(eventData: Map<String, Any>) {
-        val from = eventData["from"] as? String ?: ""
         val text = eventData["text"] as? String ?: ""
         val timestampStr = eventData["timestamp"] as? String ?: ""
 
-        Log.d(TAG, "💬 Evento new_message: from=$from, text=${text.take(20)}...")
+        if (text.isBlank()) {
+            Log.d(TAG, "⚠️ Evento sin texto, ignorando")
+            return
+        }
 
-        // Validar que sea de esta conversación
-        val isFromCurrentChat = (from == otherUserId || from == chatClient.userId)
-        val isToCurrentChat = (
-            eventData["to"] == otherUserId ||
-            eventData["to"] == chatClient.userId
-        )
+        val (senderCandidates, senderKey) = resolveSenderDetails(eventData)
+        val (receiverCandidates, _) = resolveReceiverDetails(eventData)
+        val senderMatchesCurrent = matchesUser(senderCandidates, chatClient.userId)
+        val senderMatchesOther = matchesUser(senderCandidates, otherUserId)
+        val receiverMatchesCurrent = matchesUser(receiverCandidates, chatClient.userId)
+        val receiverMatchesOther = matchesUser(receiverCandidates, otherUserId)
 
-        if (!isFromCurrentChat || !isToCurrentChat) {
+        if (!(senderMatchesCurrent || senderMatchesOther) || !(receiverMatchesCurrent || receiverMatchesOther)) {
             Log.d(TAG, "⏭️ Mensaje de otra conversación, ignorando")
             return
         }
 
         val timestamp = parseTimestampFromEvent(timestampStr)
-        val messageId = generateMessageId(from, timestamp, text)
+        val messageId = generateMessageId(
+            senderKey.ifBlank { (eventData["from"] as? String).orEmpty() },
+            timestamp,
+            text
+        )
 
         if (processedMessageIds.contains(messageId)) {
             Log.d(TAG, "⚠️ Mensaje duplicado, ignorando")
@@ -380,11 +409,16 @@ class MessageViewModel(
         val newMessage = ChatMessage(
             id = messageId,
             text = text,
-            isSent = from == chatClient.userId,
+            isSent = senderMatchesCurrent,
             timestamp = timestamp,
             deliveryStatus = "delivered",
-            senderUserId = from,
-            receiverUserId = if (from == chatClient.userId) otherUserId else chatClient.userId
+            senderUserId = when {
+                senderMatchesCurrent -> chatClient.userId
+                senderMatchesOther -> otherUserId
+                senderKey.isNotBlank() -> senderKey
+                else -> chatClient.userId
+            },
+            receiverUserId = if (senderMatchesCurrent) otherUserId else chatClient.userId
         )
 
         val currentMessages = _messages.value.toMutableList()
@@ -409,15 +443,10 @@ class MessageViewModel(
             // Solo procesar mensajes DEL OTRO USUARIO que no hayamos visto
             serverMessages.forEach { msg ->
                 try {
-                    val from = (msg["from"] as? String)
-                        ?: (msg["sender"] as? String)
-                        ?: return@forEach
+                    val (senderCandidates, senderKey) = resolveSenderDetails(msg)
 
-                    // CRÍTICO: Solo agregar mensajes donde from == otherUserId
-                    // (mensajes RECIBIDOS del otro usuario)
-                    // Los mensajes propios ya se agregaron en sendMessage() con optimistic update
-                    if (from != otherUserId) {
-                        // Este mensaje NO es del otro usuario, ignorarlo
+                    // CRÍTICO: Solo agregar mensajes donde el remitente sea el otro usuario
+                    if (!matchesUser(senderCandidates, otherUserId)) {
                         return@forEach
                     }
 
@@ -427,7 +456,11 @@ class MessageViewModel(
                     val timestampStr = msg["ts"] as? String ?: ""
                     val timestamp = parseTimestamp(timestampStr)
 
-                    val messageId = generateMessageId(from, timestamp, text)
+                    val messageId = generateMessageId(
+                        senderKey.ifBlank { otherUserId },
+                        timestamp,
+                        text
+                    )
 
                     // Solo agregar si es nuevo
                     if (!processedMessageIds.contains(messageId)) {
@@ -436,10 +469,11 @@ class MessageViewModel(
                         val newMessage = ChatMessage(
                             id = messageId,
                             text = text,
-                            isSent = false, // Siempre false porque from == otherUserId
+                            isSent = false,
                             timestamp = timestamp,
                             deliveryStatus = "delivered",
-                            senderUserId = from,
+                            senderUserId = senderCandidates.names.firstOrNull()
+                                ?: senderKey.ifBlank { otherUserId },
                             receiverUserId = chatClient.userId
                         )
 
@@ -455,6 +489,100 @@ class MessageViewModel(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error consultando mensajes nuevos", e)
+        }
+    }
+
+    private val hex24Regex = Regex("^[0-9a-fA-F]{24}$")
+
+    private data class UserCandidates(
+        val names: List<String>,
+        val ids: List<String>
+    )
+
+    private fun collectUserCandidates(
+        source: Map<String, Any?>,
+        objectKey: String,
+        fallbackKeys: List<String>
+    ): UserCandidates {
+        val names = LinkedHashSet<String>()
+        val ids = LinkedHashSet<String>()
+
+        fun addValue(value: Any?) {
+            val raw = when (value) {
+                is String -> value
+                is Number -> value.toString()
+                else -> null
+            }?.trim()?.takeIf { it.isNotEmpty() } ?: return
+            if (hex24Regex.matches(raw)) {
+                ids += raw.lowercase(Locale.ROOT)
+            } else {
+                names += raw
+            }
+        }
+
+        val obj = source[objectKey] as? Map<*, *>
+        obj?.let {
+            addValue(it["username"])
+            addValue(it["name"])
+            addValue(it["userId"])
+            addValue(it["id"])
+        }
+
+        fallbackKeys.forEach { key ->
+            addValue(source[key])
+        }
+
+        return UserCandidates(names.toList(), ids.toList())
+    }
+
+    private fun matchesUser(candidates: UserCandidates, userId: String): Boolean {
+        if (userId.isBlank()) return false
+        val normalized = userId.trim()
+        if (candidates.names.any { it.equals(normalized, ignoreCase = true) }) {
+            return true
+        }
+        val hashed = deterministicObjectId(normalized)?.lowercase(Locale.ROOT)
+        return hashed != null && candidates.ids.any { it.equals(hashed, ignoreCase = true) }
+    }
+
+    private fun resolveSenderDetails(msg: Map<String, Any?>): Pair<UserCandidates, String> {
+        val candidates = collectUserCandidates(
+            msg,
+            "sender",
+            listOf(
+                "from", "fromId", "senderId", "senderUserId",
+                "senderUsername", "senderName", "senderRaw", "fromUserId"
+            )
+        )
+        val stableKey = candidates.ids.firstOrNull()
+            ?: candidates.names.firstOrNull()
+            ?: (msg["from"] as? String)?.trim().orEmpty()
+        return candidates to stableKey
+    }
+
+    private fun resolveReceiverDetails(msg: Map<String, Any?>): Pair<UserCandidates, String> {
+        val candidates = collectUserCandidates(
+            msg,
+            "receiver",
+            listOf(
+                "to", "toId", "receiverId", "receiverUserId",
+                "receiverUsername", "receiverName", "receiverRaw", "toUserId"
+            )
+        )
+        val display = candidates.names.firstOrNull()
+            ?: candidates.ids.firstOrNull()
+            ?: (msg["to"] as? String)?.trim().orEmpty()
+        return candidates to display
+    }
+
+    private fun deterministicObjectId(value: String): String? {
+        if (value.isBlank()) return null
+        return try {
+            val digest = MessageDigest.getInstance("SHA-1")
+            val hash = digest.digest(value.trim().toByteArray(Charsets.UTF_8))
+            hash.joinToString("") { "%02x".format(it) }.substring(0, 24)
+        } catch (e: Exception) {
+            null
         }
     }
 
@@ -477,39 +605,7 @@ class MessageViewModel(
      * Formato esperado: "yyyy-MM-dd'T'HH:mm:ss.SSSSSS" (con microsegundos, SIN 'Z')
      * Se truncan los microsegundos a milisegundos para el parseo
      */
-    private fun parseTimestamp(ts: String): Long {
-        return try {
-            if (ts.isEmpty()) {
-                System.currentTimeMillis()
-            } else {
-                // MongoDB devuelve timestamps con MICROSEGUNDOS (6 dígitos) y SIN 'Z'
-                // Ejemplo: "2025-10-21T00:33:37.567000"
-                // Necesitamos truncar a milisegundos (3 dígitos): "2025-10-21T00:33:37.567"
-                val truncatedTs = if (ts.contains(".")) {
-                    val parts = ts.split(".")
-                    val fractionalPart = parts[1]
-                    if (fractionalPart.length > 3) {
-                        // Truncar microsegundos a milisegundos
-                        "${parts[0]}.${fractionalPart.substring(0, 3)}"
-                    } else {
-                        ts
-                    }
-                } else {
-                    ts
-                }
-
-                val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.US)
-                sdf.timeZone = TimeZone.getTimeZone("UTC")
-                val parsed = sdf.parse(truncatedTs)?.time ?: System.currentTimeMillis()
-
-                Log.d(TAG, "✓ Parsed timestamp: $ts -> $parsed")
-                parsed
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Error parseando timestamp: $ts", e)
-            System.currentTimeMillis()
-        }
-    }
+    private fun parseTimestamp(ts: String): Long = parseIsoTimestampFlexible(ts)
 
     /**
      * parseTimestampFromEvent: Parsea timestamp de eventos en tiempo real
@@ -519,75 +615,50 @@ class MessageViewModel(
      * - Con Z: "2025-10-20T21:33:32.692Z"
      * - Sin fracción: "2025-10-20T21:33:32"
      */
-    private fun parseTimestampFromEvent(ts: String): Long {
-        return try {
-            if (ts.isEmpty()) return System.currentTimeMillis()
+    private fun parseTimestampFromEvent(ts: String): Long = parseIsoTimestampFlexible(ts)
 
-            // Truncar microsegundos si existen
-            var processedTs = ts
-            if (ts.contains(".")) {
-                val parts = ts.split(".")
-                val fractionalAndZone = parts[1]
+    private fun parseIsoTimestampFlexible(ts: String): Long {
+        if (ts.isBlank()) return System.currentTimeMillis()
 
-                // Extraer parte fraccionaria y zona horaria
-                val zoneMatch = Regex("([+-]\\d{2}:\\d{2}|Z)").find(fractionalAndZone)
-                val zone = zoneMatch?.value ?: ""
-                val fractional = fractionalAndZone.replace(zone, "")
+        val normalized = normalizeIsoTimestamp(ts.trim())
+        val patterns = listOf(
+            "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
+            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+            "yyyy-MM-dd'T'HH:mm:ssXXX",
+            "yyyy-MM-dd'T'HH:mm:ss"
+        )
 
-                // Truncar a 3 dígitos
-                val truncatedFractional = if (fractional.length > 3) {
-                    fractional.substring(0, 3)
-                } else {
-                    fractional
-                }
-
-                processedTs = "${parts[0]}.${truncatedFractional}${zone}"
-            }
-
-            // Intentar parsear con zona horaria
+        patterns.forEach { pattern ->
             try {
-                val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.US)
-                val parsed = sdf.parse(processedTs)?.time
+                val sdf = SimpleDateFormat(pattern, Locale.US)
+                if (!pattern.contains("XXX")) {
+                    sdf.timeZone = TimeZone.getTimeZone("UTC")
+                }
+                val parsed = sdf.parse(normalized)?.time
                 if (parsed != null) {
-                    Log.d(TAG, "✓ Parsed event timestamp: $ts -> $parsed")
                     return parsed
                 }
-            } catch (e: Exception) {
-                // Continuar con otros formatos
+            } catch (_: Exception) {
             }
-
-            // Intentar con 'Z'
-            try {
-                val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
-                sdf.timeZone = TimeZone.getTimeZone("UTC")
-                val parsed = sdf.parse(processedTs)?.time
-                if (parsed != null) {
-                    Log.d(TAG, "✓ Parsed event timestamp: $ts -> $parsed")
-                    return parsed
-                }
-            } catch (e: Exception) {
-                // Continuar
-            }
-
-            // Intentar sin fracción
-            try {
-                val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
-                sdf.timeZone = TimeZone.getTimeZone("UTC")
-                val parsed = sdf.parse(processedTs)?.time
-                if (parsed != null) {
-                    Log.d(TAG, "✓ Parsed event timestamp: $ts -> $parsed")
-                    return parsed
-                }
-            } catch (e: Exception) {
-                // Continuar
-            }
-
-            Log.e(TAG, "❌ No se pudo parsear timestamp del evento: $ts")
-            System.currentTimeMillis()
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Error parseando timestamp del evento: $ts", e)
-            System.currentTimeMillis()
         }
+
+        return System.currentTimeMillis()
+    }
+
+    private fun normalizeIsoTimestamp(raw: String): String {
+        val idx = raw.indexOf('.')
+        if (idx < 0) return raw
+        val base = raw.substring(0, idx)
+        val fractionalAndZone = raw.substring(idx + 1)
+        val zoneMatch = Regex("([+-]\\d{2}:\\d{2}|Z)$").find(fractionalAndZone)
+        val zone = zoneMatch?.value ?: ""
+        val fractional = if (zone.isNotEmpty()) fractionalAndZone.removeSuffix(zone) else fractionalAndZone
+        val truncatedFraction = when {
+            fractional.length >= 3 -> fractional.substring(0, 3)
+            fractional.isEmpty() -> "000"
+            else -> fractional.padEnd(3, '0')
+        }
+        return "$base.$truncatedFraction$zone"
     }
 
     override fun onCleared() {

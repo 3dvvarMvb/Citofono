@@ -344,6 +344,8 @@ private fun parseFechaHoraToMillis(fecha: String?, hora: String?): Long {
 
 private fun parseDateMulti(s: String): Long {
     val patterns = arrayOf(
+        "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXX",
+        "yyyy-MM-dd'T'HH:mm:ss.SSSSSS",
         "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
         "yyyy-MM-dd'T'HH:mm:ssXXX",
         "yyyy-MM-dd HH:mm:ss",

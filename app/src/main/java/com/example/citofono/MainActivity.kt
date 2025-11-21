@@ -169,11 +169,12 @@ class MainActivity : ComponentActivity() {
         ) {
             lifecycleScope.launch {
                 runCatching {
+                    val caller = SessionManager.username(this@MainActivity).ifBlank { "android-device" }
                     EsbApi.recordCall(
                         destination = final,
                         status = "attempted",
                         durationSec = 5,
-                        callerId = "android-device",
+                        callerId = caller,
                         depto = department
                     )
                 }
@@ -234,4 +235,3 @@ private fun MainActivityScaffoldPreview() {
         }
     }
 }
-

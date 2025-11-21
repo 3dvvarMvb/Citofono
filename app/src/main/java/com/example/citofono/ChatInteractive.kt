@@ -662,23 +662,34 @@ class InteractiveChatClient(
      * sendMessage: Envía un mensaje a otro usuario
      * @param receiverId ID del usuario destinatario
      * @param message Texto del mensaje
+     * @param receiverName Nombre legible del receptor (opcional)
      * @return true si el mensaje se envió correctamente
      *
      * Envía la acción "send" al servicio de mensajería con:
      * - senderObjId: ID del remitente
      * - receiverObjId: ID del destinatario
      * - message: Texto del mensaje
+     * - senderUsername / receiverUsername: nombres legibles para registro/auditoría
      *
      * El mensaje se persiste en MongoDB a través del servicio
      * NO lo agrega al historial local (lo hace MessageViewModel para evitar duplicados)
      */
-    fun sendMessage(receiverId: String, message: String): Boolean {
+    fun sendMessage(receiverId: String, message: String, receiverName: String? = null): Boolean {
         return try {
-            val payload = sendAction("send", mapOf(
+            val data = mutableMapOf<String, Any>(
                 "senderObjId" to userId,
                 "receiverObjId" to receiverId,
-                "message" to message
-            ))
+                "message" to message,
+                "senderUsername" to username,
+                "senderClientId" to clientId
+            )
+            val resolvedReceiverName = receiverName ?: otherUsername
+            if (!resolvedReceiverName.isNullOrBlank()) {
+                data["receiverUsername"] = resolvedReceiverName
+            }
+            otherClientId?.let { data["receiverClientId"] = it }
+
+            val payload = sendAction("send", data)
 
             if (payload["ok"] == true) {
                 // NO agregar al historial aquí - MessageViewModel ya lo maneja

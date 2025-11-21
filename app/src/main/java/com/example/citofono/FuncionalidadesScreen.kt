@@ -6,6 +6,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -17,6 +18,7 @@ fun FuncionalidadesScreen(
     onCall: (String) -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     // --- Estados UI ---
     var isLoading by remember { mutableStateOf(false) }
@@ -122,11 +124,12 @@ fun FuncionalidadesScreen(
                 isLoading = true
                 scope.launch {
                     try {
+                        val caller = SessionManager.username(context).ifBlank { "android-device" }
                         val resp = EsbApi.recordCall(
                             destination = phone.trim(),
                             status = "attempted",
                             durationSec = 5,
-                            callerId = "android-device"
+                            callerId = caller
                         )
                         callRaw = resp.toString(2)
                         val status = resp.optString("status", "desconocido")
@@ -415,4 +418,3 @@ fun ContactsCardListPreview() {
         ContactsCardList(items = sampleContacts, onCall = {})
     }
 }
-

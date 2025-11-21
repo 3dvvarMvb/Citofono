@@ -9,6 +9,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -25,6 +26,7 @@ class EsbDebugActivity : ComponentActivity() {
 @Composable
 fun EsbDebugScreen() {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     var depto by remember { mutableStateOf("101") }
     var phone by remember { mutableStateOf("+56 9 3333 3333") }
@@ -112,11 +114,12 @@ fun EsbDebugScreen() {
                 isLoading = true
                 scope.launch {
                     try {
+                        val caller = SessionManager.username(context).ifBlank { "android-device" }
                         val resp = EsbApi.recordCall(
                             destination = phone.trim(),
                             status = "attempted",
                             durationSec = 5,
-                            callerId = "android-device",
+                            callerId = caller,
                             depto = depto.trim() // ← ahora se envía
                         )
                         callResult = resp.toString(2)
@@ -329,4 +332,3 @@ fun EsbDebugScreenPreview() {
         EsbDebugScreen()
     }
 }
-
